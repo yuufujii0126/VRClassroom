@@ -1,0 +1,202 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8" />
+  <title>発話録音 - 評価用</title>
+  <style>
+    body { font-family: sans-serif; max-width: 720px; margin: 40px auto; padding: 0 20px; }
+    h1 { font-size: 20px; }
+    .row { margin: 16px 0; }
+    button { font-size: 16px; padding: 10px 20px; margin-right: 8px; cursor: pointer; }
+    button:disabled { opacity: 0.4; cursor: not-allowed; }
+    #status { padding: 10px; background: #f3f3f3; border-radius: 6px; min-height: 24px; }
+    #log { background: #111; color: #0f0; padding: 12px; border-radius: 6px; height: 200px;
+           overflow-y: auto; font-family: monospace; font-size: 12px; white-space: pre-wrap; }
+    .meter { width: 100%; height: 12px; background: #ddd; border-radius: 6px; overflow: hidden; }
+    .meter > div { height: 100%; background: #4caf50; width: 0%; transition: width 50ms; }
+    input[type="text"] { width: 100%; padding: 8px; font-size: 14px; box-sizing: border-box; }
+    .marker-btns button { background: #ffe; }
+  </style>
+</head>
+<body>
+  <h1>発話録音（評価用）</h1>
+
+  <div class="row">
+    <label>セッションID（被験者名など）: </label>
+    <input id="sessionId" type="text" placeholder="例: subject01_session1" />
+  </div>
+
+  <div class="row">
+    <button id="startBtn">録音開始</button>
+    <button id="stopBtn" disabled>録音停止 + ダウンロード</button>
+  </div>
+
+  <div class="row">
+    <div class="meter"><div id="vol"></div></div>
+  </div>
+
+  <div class="row marker-btns">
+    <strong>区間マーカー（録音中に押すと時刻記録）:</strong><br/>
+    <button data-label="納得" disabled>納得</button>
+    <button data-label="中立" disabled>中立</button>
+    <button data-label="不納得" disabled>不納得</button>
+    <button data-label="質問" disabled>質問</button>
+  </div>
+
+  <div class="row">
+    <div id="status">待機中</div>
+  </div>
+
+  <div class="row">
+    <strong>ログ:</strong>
+    <div id="log"></div>
+  </div>
+
+  <script>
+    const startBtn = document.getElementById("startBtn");
+    const stopBtn = document.getElementById("stopBtn");
+    const statusEl = document.getElementById("status");
+    const logEl = document.getElementById("log");
+    const volEl = document.getElementById("vol");
+    const sessionIdEl = document.getElementById("sessionId");
+    const markerBtns = document.querySelectorAll(".marker-btns button");
+
+    let mediaRecorder = null;
+    let chunks = [];
+    let startTime = 0;
+    let markers = [];
+    let audioCtx = null;
+    let analyser = null;
+    let rafId = null;
+
+    function log(msg) {
+      const t = ((performance.now() - startTime) / 1000).toFixed(2);
+      logEl.textContent += `[${t}s] ${msg}\n`;
+      logEl.scrollTop = logEl.scrollHeight;
+    }
+
+    function setStatus(msg) { statusEl.textContent = msg; }
+
+    function setupMeter(stream) {
+      audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+      const source = audioCtx.createMediaStreamSource(stream);
+      analyser = audioCtx.createAnalyser();
+      analyser.fftSize = 512;
+      source.connect(analyser);
+      const data = new Uint8Array(analyser.frequencyBinCount);
+
+      function tick() {
+        analyser.getByteTimeDomainData(data);
+        let sum = 0;
+        for (let i = 0; i < data.length; i++) {
+          const v = (data[i] - 128) / 128;
+          sum += v * v;
+        }
+        const rms = Math.sqrt(sum / data.length);
+        volEl.style.width = Math.min(100, rms * 300) + "%";
+        rafId = requestAnimationFrame(tick);
+      }
+      tick();
+    }
+
+    async function start() {
+      const sessionId = sessionIdEl.value.trim() || `session_${Date.now()}`;
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({
+          audio: { echoCancellation: true, noiseSuppression: true, sampleRate: 48000 },
+          video: false,
+        });
+
+        const mimeType = MediaRecorder.isTypeSupported("audio/webm;codecs=opus")
+          ? "audio/webm;codecs=opus"
+          : "audio/webm";
+        mediaRecorder = new MediaRecorder(stream, { mimeType });
+        chunks = [];
+        markers = [];
+
+        mediaRecorder.ondataavailable = (e) => { if (e.data.size > 0) chunks.push(e.data); };
+        mediaRecorder.onstop = () => {
+          stream.getTracks().forEach((t) => t.stop());
+          cancelAnimationFrame(rafId);
+          if (audioCtx) audioCtx.close();
+          saveAll(sessionId, mimeType);
+        };
+
+        startTime = performance.now();
+        mediaRecorder.start(1000); // 1秒ごとにdata
+        setupMeter(stream);
+
+        startBtn.disabled = true;
+        stopBtn.disabled = false;
+        markerBtns.forEach((b) => (b.disabled = false));
+        setStatus(`録音中... (${sessionId})`);
+        log(`録音開始: ${sessionId}, mime=${mimeType}`);
+      } catch (err) {
+        setStatus("マイク取得失敗: " + err.message);
+        console.error(err);
+      }
+    }
+
+    function stop() {
+      if (!mediaRecorder || mediaRecorder.state === "inactive") return;
+      mediaRecorder.stop();
+      startBtn.disabled = false;
+      stopBtn.disabled = true;
+      markerBtns.forEach((b) => (b.disabled = true));
+      setStatus("停止 → ファイル保存");
+    }
+
+    async function saveAll(sessionId, mimeType) {
+      const blob = new Blob(chunks, { type: mimeType });
+      const meta = {
+        sessionId,
+        startedAt: new Date(Date.now() - (performance.now() - startTime)).toISOString(),
+        durationSec: (performance.now() - startTime) / 1000,
+        mimeType,
+        markers,
+      };
+
+      const fd = new FormData();
+      fd.append("sessionId", sessionId);
+      fd.append("audio", blob, `${sessionId}.webm`);
+      fd.append("meta", JSON.stringify(meta, null, 2));
+
+      setStatus("サーバへアップロード中…");
+      try {
+        const resp = await fetch("/upload", { method: "POST", body: fd });
+        if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+        const result = await resp.json();
+        setStatus(`保存完了: ${result.saved.join(", ")} → ${result.dir}`);
+        log(`アップロード完了 (${meta.durationSec.toFixed(2)}秒) → ${result.saved.join(", ")}`);
+      } catch (err) {
+        setStatus("アップロード失敗: " + err.message + "（ローカルにダウンロードします）");
+        log("アップロード失敗 → ダウンロード fallback");
+        downloadFile(URL.createObjectURL(blob), `${sessionId}.webm`);
+        const metaBlob = new Blob([JSON.stringify(meta, null, 2)], { type: "application/json" });
+        downloadFile(URL.createObjectURL(metaBlob), `${sessionId}.json`);
+      }
+    }
+
+    function downloadFile(url, filename) {
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+    }
+
+    startBtn.addEventListener("click", start);
+    stopBtn.addEventListener("click", stop);
+
+    markerBtns.forEach((btn) => {
+      btn.addEventListener("click", () => {
+        const t = (performance.now() - startTime) / 1000;
+        const label = btn.dataset.label;
+        markers.push({ t, label });
+        log(`マーカー: ${label}`);
+      });
+    });
+  </script>
+</body>
+</html>

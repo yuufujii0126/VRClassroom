@@ -1,0 +1,1498 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <title>Japanese Classroom VR with Eye Tracking</title>
+    <meta name="description" content="Japanese Classroom VR Environment with Eye Tracking" />
+
+    <!-- ライブラリ読み込み -->
+    <script src="https://aframe.io/releases/1.6.0/aframe.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/gh/c-frame/aframe-extras@7.5.0/dist/aframe-extras.controls.min.js"></script>
+    <!-- MediaPipe FaceMesh -->
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/face_mesh.js" crossorigin="anonymous"></script>
+
+    <style>
+      #overlay {
+        position: absolute;
+        top: 0;
+        left: 0;
+        pointer-events: none;
+      }
+
+      #warning {
+        position: fixed;
+        top: 20px;
+        left: 50%;
+        transform: translateX(-50%);
+        background: red;
+        color: white;
+        padding: 10px 20px;
+        display: none;
+        font-size: 18px;
+        font-weight: bold;
+        z-index: 9999;
+      }
+
+      #save-button {
+        position: fixed;
+        bottom: 20px;
+        right: 20px;
+        padding: 10px;
+        border: none;
+        border-radius: 5px;
+        color: white;
+        background-color: #4caf50;
+        z-index: 10;
+        cursor: pointer;
+      }
+
+      #image-selector-container {
+        position: fixed;
+        bottom: 20px;
+        left: 20px;
+        z-index: 100;
+        background: rgba(255, 255, 255, 0.8);
+        padding: 10px;
+        border-radius: 5px;
+      }
+
+      .image-thumbnail {
+        width: 100px;
+        height: 60px;
+        object-fit: cover;
+        margin: 5px;
+        cursor: pointer;
+        border: 2px solid transparent;
+      }
+
+      .image-thumbnail.selected {
+        border-color: #2196f3;
+      }
+
+      #upload-button {
+        padding: 10px;
+        background-color: #2196f3;
+        color: white;
+        border: none;
+        border-radius: 5px;
+        cursor: pointer;
+        margin-bottom: 10px;
+      }
+
+      #nod-indicator {
+        position: fixed;
+        top: 80px;
+        left: 50%;
+        transform: translateX(-50%);
+        background: #4caf50;
+        color: white;
+        padding: 15px 30px;
+        display: none;
+        font-size: 20px;
+        font-weight: bold;
+        z-index: 9999;
+        border-radius: 10px;
+        box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3);
+      }
+
+      #nod-counter {
+        position: fixed;
+        top: 20px;
+        left: 20px;
+        background: rgba(76, 175, 80, 0.9);
+        color: white;
+        padding: 10px 15px;
+        font-size: 16px;
+        font-weight: bold;
+        z-index: 100;
+        border-radius: 5px;
+      }
+
+      #face-status {
+        position: fixed;
+        top: 60px;
+        left: 20px;
+        background: rgba(33, 150, 243, 0.9);
+        color: white;
+        padding: 10px 15px;
+        font-size: 16px;
+        font-weight: bold;
+        z-index: 100;
+        border-radius: 5px;
+        min-width: 150px;
+      }
+
+      #emotion-details {
+        font-size: 12px;
+        margin-top: 5px;
+        opacity: 0.8;
+      }
+
+      #face-video-mediapipe {
+        position: fixed;
+        bottom: 20px;
+        right: 20px;
+        width: 320px;
+        height: 240px;
+        border: 3px solid #2196f3;
+        border-radius: 10px;
+        z-index: 50;
+        display: none;
+      }
+
+      #toggle-video-mediapipe {
+        position: fixed;
+        bottom: 270px;
+        right: 20px;
+        padding: 8px 12px;
+        background-color: #2196f3;
+        color: white;
+        border: none;
+        border-radius: 5px;
+        cursor: pointer;
+        z-index: 100;
+      }
+
+      /* デバッグパネル */
+      #debug-panel {
+        position: fixed;
+        top: 100px;
+        left: 20px;
+        background: rgba(0, 0, 0, 0.8);
+        color: #0f0;
+        padding: 10px 14px;
+        font-size: 14px;
+        font-family: monospace;
+        z-index: 200;
+        border-radius: 5px;
+        border: 1px solid #0f0;
+      }
+      #debug-panel button {
+        margin-top: 6px;
+        margin-right: 4px;
+        padding: 4px 10px;
+        background: #333;
+        color: #0f0;
+        border: 1px solid #0f0;
+        border-radius: 3px;
+        cursor: pointer;
+        font-family: monospace;
+      }
+      #spacebar-flash {
+        position: fixed;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, -50%);
+        background: rgba(255, 165, 0, 0.9);
+        color: white;
+        padding: 20px 40px;
+        font-size: 24px;
+        font-weight: bold;
+        border-radius: 12px;
+        z-index: 9000;
+        display: none;
+        pointer-events: none;
+      }
+      #debug-timer {
+        color: #ff0;
+        font-weight: bold;
+      }
+
+      /* キャリブレーション */
+      #start-calibration {
+        position: fixed;
+        top: 20px;
+        right: 20px;
+        padding: 10px 16px;
+        background-color: #ff9800;
+        color: white;
+        border: none;
+        border-radius: 5px;
+        cursor: pointer;
+        z-index: 100;
+        font-size: 14px;
+        font-weight: bold;
+      }
+
+      #calibration-overlay {
+        position: fixed;
+        top: 0; left: 0;
+        width: 100%; height: 100%;
+        background: rgba(0, 0, 0, 0.85);
+        z-index: 10000;
+        display: none;
+        cursor: default;
+      }
+
+      #calib-instruction {
+        position: absolute;
+        top: 50%; left: 50%;
+        transform: translate(-50%, -50%);
+        color: white;
+        font-size: 24px;
+        text-align: center;
+        line-height: 1.6;
+      }
+
+      #calib-progress {
+        position: absolute;
+        top: 16px; left: 50%;
+        transform: translateX(-50%);
+        color: white;
+        font-size: 20px;
+        font-weight: bold;
+      }
+
+      .calib-point {
+        position: absolute;
+        width: 44px; height: 44px;
+        border-radius: 50%;
+        background: rgba(255, 60, 60, 0.9);
+        transform: translate(-50%, -50%);
+        cursor: pointer;
+        display: none;
+        box-shadow: 0 0 16px rgba(255, 60, 60, 0.6);
+        animation: calib-pulse 1s ease-in-out infinite;
+      }
+      .calib-point::after {
+        content: '';
+        position: absolute;
+        top: 50%; left: 50%;
+        width: 6px; height: 6px;
+        border-radius: 50%;
+        background: white;
+        transform: translate(-50%, -50%);
+      }
+      .calib-point.collecting {
+        background: rgba(76, 175, 80, 0.9);
+        box-shadow: 0 0 16px rgba(76, 175, 80, 0.7);
+        animation: none;
+      }
+
+      @keyframes calib-pulse {
+        0%, 100% { transform: translate(-50%, -50%) scale(1); }
+        50% { transform: translate(-50%, -50%) scale(1.2); }
+      }
+
+      #calib-sample-count {
+        position: absolute;
+        bottom: 80px; left: 50%;
+        transform: translateX(-50%);
+        color: #90caf9;
+        font-size: 18px;
+        font-weight: bold;
+        display: none;
+      }
+
+      #calib-face-warning {
+        position: absolute;
+        bottom: 40px; left: 50%;
+        transform: translateX(-50%);
+        color: #ff5252;
+        font-size: 16px;
+        font-weight: bold;
+        display: none;
+      }
+    </style>
+  </head>
+
+  <body>
+    <div id="warning">👀 同じ場所を見つめすぎています！</div>
+    <div id="nod-indicator">✅ 頷きを検知しました！</div>
+    <div id="nod-counter">頷き回数: <span id="nod-count">0</span></div>
+    <div id="face-status">
+      <div id="emotion-main">� 無表情</div>
+      <div id="emotion-details"></div>
+    </div>
+    <video id="face-video-mediapipe" autoplay playsinline></video>
+    <button id="toggle-video-mediapipe">📹 カメラ表示</button>
+    <button id="start-calibration">視線キャリブレーション</button>
+    <div id="debug-panel">
+      <div>見逃し: <span id="spacebar-count">0</span> | 検出: <span id="detect-count">0</span> | 誤検出: <span id="fp-count">0</span></div>
+      <button id="start-trial-btn">60秒計測開始</button>
+      <button id="analyze-nod-btn">分析</button>
+      <button id="download-debug-btn">DL</button>
+      <div id="debug-timer"></div>
+    </div>
+    <div id="spacebar-flash">SPACE</div>
+
+    <!-- キャリブレーションオーバーレイ -->
+    <div id="calibration-overlay">
+      <div id="calib-instruction"></div>
+      <div id="calib-progress"></div>
+      <div id="calib-sample-count"></div>
+      <div id="calib-face-warning">顔が検出されません。カメラに顔を向けてください。</div>
+    </div>
+
+    <a-scene
+      renderer="physicallyCorrectLights: true;"
+    >
+      <a-assets>
+        <a-asset-item id="classroomGLB" src="japanese_classroom/scene.gltf"></a-asset-item>
+        <img id="default-screen" crossorigin="anonymous" />
+      </a-assets>
+
+      <a-entity gltf-model="#classroomGLB" scale="1 1 1" position="0 0 0"></a-entity>
+
+      <!-- VR上の警告表示（プレイヤーの前方に表示） -->
+      <a-entity
+        id="attention-warning-text"
+        position="-2 2 5"
+        visible="false"
+        look-at="#player"
+        text="value: 同じ場所を見つめすぎています！; color: red; align: center; width: 4;"
+      ></a-entity>
+
+      <!-- VR上の頷き通知 -->
+      <a-entity
+        id="nod-notification-text"
+        position="-2 2.2 5"
+        visible="false"
+        look-at="#player"
+        text="value: 頷きを検知しました！; color: #4caf50; align: center; width: 4;"
+      ></a-entity>
+
+      <!-- スクリーン（教室前方の壁 X=-7.3 付近） -->
+      <a-entity id="screen-container" position="-7 1.6 6.5" rotation="0 90 0">
+        <a-plane id="screen" material="src: #default-screen" width="4" height="2.2" position="0 0 0"></a-plane>
+      </a-entity>
+
+      <!-- 照明 -->
+      <!-- 環境光（全体を底上げ） -->
+      <a-entity light="type: ambient; color: #ffffff; intensity: 0.6"></a-entity>
+      <!-- 天井からの主照明（蛍光灯を模擬） -->
+      <a-entity light="type: point; color: #fffbe6; intensity: 1.5; distance: 12; decay: 1.5" position="-2 2.3 4.5"></a-entity>
+      <a-entity light="type: point; color: #fffbe6; intensity: 1.5; distance: 12; decay: 1.5" position="-2 2.3 8.5"></a-entity>
+      <!-- 窓側からの自然光 -->
+      <a-entity light="type: directional; color: #ffe8c0; intensity: 0.8" position="3 4 6"></a-entity>
+      <!-- 黒板側を照らす補助光 -->
+      <a-entity light="type: point; color: #ffffff; intensity: 0.8; distance: 8; decay: 2" position="-6 2.0 6.5"></a-entity>
+
+      <!-- プレイヤー（教室中央やや後方） -->
+      <!-- 教室: X[-7.3 ~ 3.7], Y[0 ~ 2.4], Z[2.7 ~ 10.4] -->
+      <a-entity
+        id="rig"
+        movement-controls="fly:true;"
+        position="-2 0 8"
+      >
+        <a-entity
+          id="player"
+          camera
+          position="0 1.6 0"
+          look-controls
+        ></a-entity>
+      </a-entity>
+    </a-scene>
+
+    <canvas id="overlay"></canvas>
+    <button id="save-button">Save Tracking Data</button>
+
+    <!-- スクリーン画像選択 -->
+    <div id="image-selector-container">
+      <input type="file" id="image-upload" accept="image/*" style="display: none" />
+      <button id="upload-button">Upload New Image</button>
+      <div id="image-thumbnails"></div>
+    </div>
+
+    <script>
+      // ========== 行列演算ユーティリティ ==========
+      function matTranspose(A) {
+        const rows = A.length, cols = A[0].length;
+        const T = Array.from({ length: cols }, () => new Array(rows));
+        for (let i = 0; i < rows; i++)
+          for (let j = 0; j < cols; j++) T[j][i] = A[i][j];
+        return T;
+      }
+
+      function matMul(A, B) {
+        const m = A.length, k = A[0].length, n = B[0].length;
+        const C = Array.from({ length: m }, () => new Array(n).fill(0));
+        for (let i = 0; i < m; i++)
+          for (let j = 0; j < n; j++)
+            for (let p = 0; p < k; p++) C[i][j] += A[i][p] * B[p][j];
+        return C;
+      }
+
+      function matInverse(A) {
+        const n = A.length;
+        const aug = A.map((row, i) => {
+          const r = row.slice();
+          for (let j = 0; j < n; j++) r.push(i === j ? 1 : 0);
+          return r;
+        });
+        for (let col = 0; col < n; col++) {
+          let maxRow = col, maxVal = Math.abs(aug[col][col]);
+          for (let row = col + 1; row < n; row++) {
+            if (Math.abs(aug[row][col]) > maxVal) { maxVal = Math.abs(aug[row][col]); maxRow = row; }
+          }
+          if (maxVal < 1e-12) return null;
+          [aug[col], aug[maxRow]] = [aug[maxRow], aug[col]];
+          const pivot = aug[col][col];
+          for (let j = 0; j < 2 * n; j++) aug[col][j] /= pivot;
+          for (let row = 0; row < n; row++) {
+            if (row === col) continue;
+            const factor = aug[row][col];
+            for (let j = 0; j < 2 * n; j++) aug[row][j] -= factor * aug[col][j];
+          }
+        }
+        return aug.map(row => row.slice(n));
+      }
+
+      function dotProduct(a, b) {
+        let s = 0;
+        for (let i = 0; i < a.length; i++) s += a[i] * b[i];
+        return s;
+      }
+
+      function polyFeatures(rx, ry) {
+        return [1, rx, ry, rx * ry, rx * rx, ry * ry];
+      }
+
+      function trimmedMean(arr, trimRatio) {
+        const sorted = arr.slice().sort((a, b) => a - b);
+        const trimCount = Math.floor(sorted.length * trimRatio);
+        const trimmed = sorted.slice(trimCount, sorted.length - trimCount);
+        return trimmed.reduce((s, v) => s + v, 0) / trimmed.length;
+      }
+
+      // ========== 状態変数 ==========
+      let uploadedImages = [];
+      const gazeData = [];
+      const nodData = [];
+      let emotionData = [];
+      let nodCount = 0;
+
+      // 注視検出用（虹彩ベース視線推定）
+      let lastGaze = null;
+      let stationaryTime = 0;
+      let lastTimestamp = null;
+      const gazeThreshold = 30; // px
+      const timeThreshold = 3000; // ms
+      let smoothedGaze = null;
+      const gazeAlpha = 0.3; // スムージング係数
+
+      // 頷き検出用（3Dランドマーク + 状態マシン）
+      let headPoseHistory = [];
+      const POSE_HISTORY_MAX = 60;        // ~2秒分（30fps想定）
+      let smoothedNoseY = null;
+      let smoothedNoseX = null;
+      let baselineNoseY = null;
+      let baselineNoseX = null;
+      let nodPhase = 'IDLE';              // IDLE | MOVING
+      let nodPeakDelta = 0;
+      let nodPeakUpdated = false;        // MOVING開始後にピークが更新されたか（V字形状の確認）
+      let nodStartTime = null;
+      const NOD_SMOOTH_ALPHA = 0.55;      // 平滑化係数（0=最大平滑, 1=平滑なし）連続頷き対応で応答性向上
+      const BASELINE_ALPHA = 0.03;        // ベースライン追従速度
+      const NOD_MIN_DELTA_Y = 0.010;      // 最小検出閾値（正規化Y）
+      const NOD_RETURN_RATIO = 0.35;      // ピークからの復帰割合（peakUpdated時）
+      const NOD_RETURN_RATIO_STRICT = 0.55; // ピーク未更新時の厳格復帰割合
+      const NOD_PEAK_AMP_FACTOR = 2.0;  // ピーク未更新時: peakAbs > threshold * この倍率が必要
+      const NOD_MAX_DURATION = 600;       // 最大うなずき持続時間(ms)
+      const NOD_MIN_DURATION = 60;       // 最小うなずき持続時間(ms) ノイズ除去
+      const NOD_COOLDOWN = 500;           // 連続検出防止(ms)
+      const NOD_MAX_YAW_RANGE = 0.06;    // ヨー変化上限（横振りフィルタ）
+      const NOD_VH_RATIO = 1.5;          // 縦/横 移動量比の最低値（縦優位判定）
+      let lastNodTime = 0;
+
+      // ========== デバッグ: うなずき分析用データ収集 ==========
+      let nodDebugLog = [];           // 毎フレームのセンサーデータ
+      let spacebarMarkers = [];       // スペースバー押下タイムスタンプ（見逃し報告）
+      let fpMarkers = [];             // 誤検出報告タイムスタンプ（SPACEで報告されたFP）
+      let nodDetections = [];         // 検出タイムスタンプ
+      let debugRecording = true;      // 常時記録
+
+      // 表情検出用
+      let lastEmotionTime = 0;
+      const emotionCooldown = 500;
+
+      // 表情の絵文字マッピング
+      const emotionEmojis = {
+        happy: '😊', sad: '😢', angry: '😠',
+        surprised: '😲', confused: '🤔', neutral: '😐'
+      };
+      const emotionNames = {
+        happy: '喜び', sad: '悲しみ', angry: '怒り',
+        surprised: '驚き', confused: '困惑', neutral: '無表情'
+      };
+
+      // ========== キャリブレーション ==========
+      let calibrationState = 'IDLE'; // IDLE, PREPARING, COLLECTING, PROCESSING, CALIBRATED
+      let calibrationModel = null;   // { wx: [6], wy: [6] }
+      let calibrationData = [];      // 各点の集計結果
+      let sampleBuffer = [];         // 現在の点の生サンプル
+      const SAMPLES_PER_POINT = 30;
+      const RIDGE_LAMBDA = 0.001;
+      let currentCalibPoint = 0;
+      let currentCalibElement = null;
+      let faceDetectedDuringCalib = false;
+      let calibRetryCount = 0;
+      const MAX_RETRIES_PER_POINT = 3;
+
+      // 9点レイアウト（%）表示順: 中央→対角→辺中点（ドリフト防止）
+      const CALIB_POINTS = [
+        { x: 50, y: 50 }, // 中央
+        { x: 10, y: 10 }, // 左上
+        { x: 90, y: 90 }, // 右下
+        { x: 90, y: 10 }, // 右上
+        { x: 10, y: 90 }, // 左下
+        { x: 10, y: 50 }, // 左中
+        { x: 90, y: 50 }, // 右中
+        { x: 50, y: 10 }, // 上中
+        { x: 50, y: 90 }, // 下中
+      ];
+
+      // ========== 虹彩比率の抽出（キャリブレーションと視線推定で共用） ==========
+      function extractIrisRatios(landmarks) {
+        if (landmarks.length < 468) return null;
+
+        // 方法1: 虹彩ランドマーク（478個以上ある場合）
+        if (landmarks.length >= 478) {
+          const le = { outer: landmarks[33], inner: landmarks[133], iris: landmarks[468],
+                       top: landmarks[159], bottom: landmarks[145] };
+          const re = { outer: landmarks[263], inner: landmarks[362], iris: landmarks[473],
+                       top: landmarks[386], bottom: landmarks[374] };
+
+          const lDenomX = le.inner.x - le.outer.x;
+          const rDenomX = re.outer.x - re.inner.x;
+          const lDenomY = le.bottom.y - le.top.y;
+          const rDenomY = re.bottom.y - re.top.y;
+
+          if (Math.abs(lDenomX) >= 1e-6 && Math.abs(rDenomX) >= 1e-6 &&
+              Math.abs(lDenomY) >= 1e-6 && Math.abs(rDenomY) >= 1e-6) {
+            const lRatioX = (le.iris.x - le.outer.x) / lDenomX;
+            const rRatioX = (re.iris.x - re.inner.x) / rDenomX;
+            const ratioX = (lRatioX + rRatioX) / 2;
+            const lRatioY = (le.iris.y - le.top.y) / lDenomY;
+            const rRatioY = (re.iris.y - re.top.y) / rDenomY;
+            const ratioY = (lRatioY + rRatioY) / 2;
+            if (isFinite(ratioX) && isFinite(ratioY)) return { ratioX, ratioY };
+          }
+        }
+
+        // 方法2: フォールバック — 頭部姿勢ベース推定（468ランドマークで動作）
+        const noseTip = landmarks[1];
+        const leftTemple = landmarks[234];
+        const rightTemple = landmarks[454];
+        const forehead = landmarks[10];
+        const chin = landmarks[152];
+
+        const faceCenterX = (leftTemple.x + rightTemple.x) / 2;
+        const faceCenterY = (forehead.y + chin.y) / 2;
+        const faceWidth = Math.abs(rightTemple.x - leftTemple.x);
+        const faceHeight = Math.abs(chin.y - forehead.y);
+        if (faceWidth < 1e-6 || faceHeight < 1e-6) return null;
+
+        const ratioX = (noseTip.x - faceCenterX) / faceWidth + 0.5;
+        const ratioY = (noseTip.y - faceCenterY) / faceHeight + 0.5;
+        if (isFinite(ratioX) && isFinite(ratioY)) return { ratioX, ratioY };
+        return null;
+      }
+
+      // ========== 回帰モデルの構築 ==========
+      function solveCalibration(data) {
+        const n = data.length;
+        // 特徴行列 X (n x 6), ターゲットベクトル sx, sy (n x 1)
+        const X = data.map(d => polyFeatures(d.ratioX, d.ratioY));
+        const sx = data.map(d => [d.screenX]);
+        const sy = data.map(d => [d.screenY]);
+
+        const Xt = matTranspose(X);
+        const XtX = matMul(Xt, X);
+
+        // Ridge正則化: XtX + λI
+        for (let i = 0; i < XtX.length; i++) XtX[i][i] += RIDGE_LAMBDA;
+
+        const XtXinv = matInverse(XtX);
+        if (!XtXinv) { console.error('キャリブレーション行列が特異です'); return null; }
+
+        const P = matMul(XtXinv, Xt); // 6 x n
+        const wx = matMul(P, sx).map(r => r[0]); // 6要素
+        const wy = matMul(P, sy).map(r => r[0]); // 6要素
+
+        return { wx, wy };
+      }
+
+      // ========== キャリブレーション状態遷移 ==========
+      function startCalibration() {
+        calibrationData = [];
+        sampleBuffer = [];
+        currentCalibPoint = 0;
+        calibRetryCount = 0;
+        calibrationState = 'PREPARING';
+
+        // A-Frameのpointer lockを解除し、look-controlsを無効化
+        if (document.pointerLockElement) document.exitPointerLock();
+        const player = document.getElementById('player');
+        if (player) player.setAttribute('look-controls', 'enabled', false);
+
+        const overlay = document.getElementById('calibration-overlay');
+        const instruction = document.getElementById('calib-instruction');
+        const progress = document.getElementById('calib-progress');
+        overlay.style.display = 'block';
+        progress.textContent = '';
+        instruction.innerHTML = '視線キャリブレーション<br><br>赤い点を見ながら画面をクリックしてください<br>頭はできるだけ動かさないでください<br><br><span id="calib-countdown">3</span>秒後に開始...';
+
+        // オーバーレイ全体のクリックでもキャリブレーション点を受け付ける
+        overlay.onclick = (e) => {
+          e.stopPropagation();
+          e.preventDefault();
+          if (calibrationState === 'COLLECTING' || calibrationState === 'SAMPLING') {
+            onCalibPointClick(e);
+          }
+        };
+
+        // カウントダウン
+        let countdown = 3;
+        const timer = setInterval(() => {
+          countdown--;
+          const el = document.getElementById('calib-countdown');
+          if (el) el.textContent = countdown;
+          if (countdown <= 0) {
+            clearInterval(timer);
+            showNextCalibPoint();
+          }
+        }, 1000);
+      }
+
+      function showNextCalibPoint() {
+        const overlay = document.getElementById('calibration-overlay');
+        const instruction = document.getElementById('calib-instruction');
+        const progress = document.getElementById('calib-progress');
+
+        instruction.textContent = '';
+        calibrationState = 'COLLECTING';
+        sampleBuffer = [];
+        faceDetectedDuringCalib = false;
+
+        // 前の点を削除
+        if (currentCalibElement) { currentCalibElement.remove(); currentCalibElement = null; }
+
+        if (currentCalibPoint >= CALIB_POINTS.length) {
+          processCalibration();
+          return;
+        }
+
+        const pt = CALIB_POINTS[currentCalibPoint];
+        progress.textContent = `${currentCalibPoint + 1} / ${CALIB_POINTS.length}`;
+
+        const dot = document.createElement('div');
+        dot.className = 'calib-point';
+        dot.style.left = pt.x + '%';
+        dot.style.top = pt.y + '%';
+        dot.style.display = 'block';
+        dot.addEventListener('click', onCalibPointClick);
+        overlay.appendChild(dot);
+        currentCalibElement = dot;
+      }
+
+      let samplingTimer = null;
+
+      function onCalibPointClick(e) {
+        if (e) { e.stopPropagation(); e.preventDefault(); }
+        // COLLECTING でも SAMPLING（スタック時の再クリック）でも受け付ける
+        if (calibrationState !== 'COLLECTING' && calibrationState !== 'SAMPLING') return;
+        console.log(`Calib point ${currentCalibPoint + 1} clicked, starting sampling...`);
+        // 収集中に変更（緑色）
+        if (currentCalibElement) currentCalibElement.classList.add('collecting');
+        sampleBuffer = [];
+        calibrationState = 'SAMPLING';
+        document.getElementById('calib-sample-count').style.display = 'block';
+        document.getElementById('calib-sample-count').textContent = 'サンプル: 0 / ' + SAMPLES_PER_POINT;
+
+        // タイムアウト: 5秒以内に30サンプル集まらなければ処理
+        if (samplingTimer) clearTimeout(samplingTimer);
+        samplingTimer = setTimeout(() => {
+          if (calibrationState === 'SAMPLING') {
+            console.warn(`Sampling timeout at point ${currentCalibPoint + 1}, collected ${sampleBuffer.length}/${SAMPLES_PER_POINT}`);
+            if (sampleBuffer.length >= 5) {
+              // 5サンプル以上あれば進む
+              finishCalibPoint();
+            } else {
+              calibRetryCount++;
+              if (calibRetryCount >= MAX_RETRIES_PER_POINT) {
+                // リトライ上限: この点をスキップ（デフォルト比率で補填）
+                console.warn(`Max retries reached for point ${currentCalibPoint + 1}, skipping...`);
+                const pt = CALIB_POINTS[currentCalibPoint];
+                calibrationData.push({
+                  ratioX: 0.5, ratioY: 0.5,
+                  screenX: pt.x / 100 * window.innerWidth,
+                  screenY: pt.y / 100 * window.innerHeight,
+                });
+                currentCalibPoint++;
+                calibRetryCount = 0;
+                calibrationState = 'COLLECTING';
+                document.getElementById('calib-sample-count').style.display = 'none';
+                showNextCalibPoint();
+              } else {
+                // サンプル不足: 同じ点をリトライ
+                calibrationState = 'COLLECTING';
+                if (currentCalibElement) currentCalibElement.classList.remove('collecting');
+                document.getElementById('calib-sample-count').textContent = 'リトライ... もう一度クリック';
+                console.log(`Retrying same point (attempt ${calibRetryCount + 1}/${MAX_RETRIES_PER_POINT})...`);
+              }
+            }
+          }
+        }, 5000);
+      }
+
+      function collectCalibSample(irisRatios) {
+        if (calibrationState !== 'SAMPLING') return;
+        document.getElementById('calib-face-warning').style.display = 'none';
+
+        sampleBuffer.push(irisRatios);
+        document.getElementById('calib-sample-count').textContent =
+          `サンプル: ${sampleBuffer.length} / ${SAMPLES_PER_POINT}`;
+
+        if (sampleBuffer.length >= SAMPLES_PER_POINT) {
+          if (samplingTimer) { clearTimeout(samplingTimer); samplingTimer = null; }
+          finishCalibPoint();
+        }
+      }
+
+      function finishCalibPoint() {
+        const rxValues = sampleBuffer.map(s => s.ratioX);
+        const ryValues = sampleBuffer.map(s => s.ratioY);
+        const trimRatio = sampleBuffer.length >= 20 ? 0.2 : 0;
+        const avgRX = trimmedMean(rxValues, trimRatio);
+        const avgRY = trimmedMean(ryValues, trimRatio);
+
+        const pt = CALIB_POINTS[currentCalibPoint];
+        calibrationData.push({
+          ratioX: avgRX,
+          ratioY: avgRY,
+          screenX: pt.x / 100 * window.innerWidth,
+          screenY: pt.y / 100 * window.innerHeight,
+        });
+
+        console.log(`Calib point ${currentCalibPoint + 1}/${CALIB_POINTS.length}: ratioX=${avgRX.toFixed(4)}, ratioY=${avgRY.toFixed(4)} (${sampleBuffer.length} samples)`);
+
+        currentCalibPoint++;
+        calibRetryCount = 0;
+        calibrationState = 'COLLECTING';
+        document.getElementById('calib-sample-count').style.display = 'none';
+        showNextCalibPoint();
+      }
+
+      function processCalibration() {
+        calibrationState = 'PROCESSING';
+        const instruction = document.getElementById('calib-instruction');
+        const progress = document.getElementById('calib-progress');
+        instruction.textContent = '計算中...';
+        progress.textContent = '';
+
+        const model = solveCalibration(calibrationData);
+        if (model) {
+          calibrationModel = model;
+          calibrationState = 'CALIBRATED';
+          smoothedGaze = null; // スムージングリセット
+
+          // localStorage に保存
+          localStorage.setItem('gazeCalibration', JSON.stringify({
+            wx: model.wx, wy: model.wy,
+            timestamp: Date.now(),
+            screenWidth: window.innerWidth,
+            screenHeight: window.innerHeight,
+          }));
+
+          instruction.textContent = 'キャリブレーション完了！';
+          document.getElementById('start-calibration').textContent = '再キャリブレーション';
+          setTimeout(() => {
+            document.getElementById('calibration-overlay').style.display = 'none';
+            document.getElementById('calibration-overlay').onclick = null;
+            if (currentCalibElement) { currentCalibElement.remove(); currentCalibElement = null; }
+            // A-Frameのlook-controlsを再有効化
+            const player = document.getElementById('player');
+            if (player) player.setAttribute('look-controls', 'enabled', true);
+          }, 1000);
+        } else {
+          instruction.textContent = 'キャリブレーション失敗。もう一度お試しください。';
+          calibrationState = 'IDLE';
+          setTimeout(() => {
+            document.getElementById('calibration-overlay').style.display = 'none';
+            document.getElementById('calibration-overlay').onclick = null;
+            const player = document.getElementById('player');
+            if (player) player.setAttribute('look-controls', 'enabled', true);
+          }, 2000);
+        }
+      }
+
+      // ========== 視線推定（虹彩ランドマーク + キャリブレーション） ==========
+      function estimateGaze(landmarks) {
+        const iris = extractIrisRatios(landmarks);
+        if (!iris) return null;
+
+        let screenX, screenY;
+
+        if (calibrationModel) {
+          // キャリブレーション済み: 多項式回帰で予測
+          const features = polyFeatures(iris.ratioX, iris.ratioY);
+          screenX = dotProduct(features, calibrationModel.wx);
+          screenY = dotProduct(features, calibrationModel.wy);
+        } else {
+          // フォールバック: リニアマッピング
+          screenX = (1 - iris.ratioX) * window.innerWidth;
+          screenY = iris.ratioY * window.innerHeight;
+        }
+
+        // 画面範囲にクランプ
+        screenX = Math.max(0, Math.min(window.innerWidth, screenX));
+        screenY = Math.max(0, Math.min(window.innerHeight, screenY));
+
+        // 指数移動平均スムージング
+        if (smoothedGaze) {
+          screenX = gazeAlpha * screenX + (1 - gazeAlpha) * smoothedGaze.x;
+          screenY = gazeAlpha * screenY + (1 - gazeAlpha) * smoothedGaze.y;
+        }
+        smoothedGaze = { x: screenX, y: screenY };
+
+        return { x: screenX, y: screenY };
+      }
+
+      // ========== 頷き検出（3Dランドマーク + 状態マシン） ==========
+      // 複数ランドマークから頭部のヨー（横回転）を推定し横振りを除外
+      // 縦横移動比率で首回しと区別し、微小なうなずきも検出
+      function detectNod(landmarks, timestamp) {
+        const noseTip = landmarks[1];
+        const forehead = landmarks[10];
+        const chin = landmarks[152];
+        const leftEye = landmarks[33];
+        const rightEye = landmarks[263];
+
+        // 顔サイズ（正規化座標上の額〜顎距離）
+        const faceH = Math.hypot(chin.x - forehead.x, chin.y - forehead.y);
+        if (faceH < 0.03) return;
+
+        // ヨー推定: 鼻先の水平オフセット / 目幅（横振りフィルタ用）
+        const eyeMidX = (leftEye.x + rightEye.x) / 2;
+        const eyeW = Math.abs(rightEye.x - leftEye.x);
+        const yaw = eyeW > 0.001 ? (noseTip.x - eyeMidX) / eyeW : 0;
+
+        // 鼻先Y・X座標を平滑化
+        const rawY = noseTip.y;
+        const rawX = noseTip.x;
+        let sY = rawY, sX = rawX;
+        if (smoothedNoseY !== null) {
+          sY = NOD_SMOOTH_ALPHA * rawY + (1 - NOD_SMOOTH_ALPHA) * smoothedNoseY;
+          sX = NOD_SMOOTH_ALPHA * rawX + (1 - NOD_SMOOTH_ALPHA) * smoothedNoseX;
+        }
+        smoothedNoseY = sY;
+        smoothedNoseX = sX;
+
+        // ベースライン: IDLE中のみ緩やかに追従（姿勢変化を吸収）
+        if (baselineNoseY === null) {
+          baselineNoseY = sY;
+          baselineNoseX = sX;
+        } else if (nodPhase === 'IDLE') {
+          baselineNoseY = BASELINE_ALPHA * sY + (1 - BASELINE_ALPHA) * baselineNoseY;
+          baselineNoseX = BASELINE_ALPHA * sX + (1 - BASELINE_ALPHA) * baselineNoseX;
+        }
+
+        // 履歴に追加
+        headPoseHistory.push({ y: sY, x: sX, yaw, time: timestamp });
+        while (headPoseHistory.length > POSE_HISTORY_MAX) headPoseHistory.shift();
+
+        if (headPoseHistory.length < 5) return;
+        if (timestamp - lastNodTime < NOD_COOLDOWN) return;
+
+        const deltaY = sY - baselineNoseY;
+        const deltaX = sX - baselineNoseX;
+
+        // 適応的閾値: 顔が遠い（小さい）ほど変化量が小さいため閾値を下げる
+        const threshold = Math.max(NOD_MIN_DELTA_Y, faceH * 0.035);
+
+        // デバッグログ記録（毎フレーム）
+        if (debugRecording) {
+          nodDebugLog.push({
+            t: timestamp, sY, sX, deltaY, deltaX, yaw, faceH,
+            baseY: baselineNoseY, threshold, phase: nodPhase,
+            peakUpd: nodPeakUpdated, peakDelta: nodPeakDelta
+          });
+        }
+
+        switch (nodPhase) {
+          case 'IDLE':
+            // 縦方向に閾値以上動き、かつ横方向の動きが小さい場合に開始
+            if (Math.abs(deltaY) > threshold && Math.abs(deltaY) > Math.abs(deltaX) * NOD_VH_RATIO) {
+              nodPhase = 'MOVING';
+              nodPeakDelta = deltaY;
+              nodPeakUpdated = false;
+              nodStartTime = timestamp;
+            }
+            break;
+
+          case 'MOVING':
+            // タイムアウト: 長すぎる動きはうなずきではない
+            if (timestamp - nodStartTime > NOD_MAX_DURATION) {
+              nodPhase = 'IDLE';
+              break;
+            }
+
+            // 動作期間中のデータを取得
+            const recent = headPoseHistory.filter(h => h.time >= nodStartTime);
+            if (recent.length > 3) {
+              // ヨーフィルタ: 動作中に横方向の変化が大きければ首回しとして除外
+              const yaws = recent.map(h => h.yaw);
+              const yawRange = Math.max(...yaws) - Math.min(...yaws);
+              if (yawRange > NOD_MAX_YAW_RANGE) {
+                nodPhase = 'IDLE';
+                break;
+              }
+
+              // 水平移動量フィルタ: X方向の移動レンジが大きすぎたら首回し
+              const xs = recent.map(h => h.x);
+              const xRange = Math.max(...xs) - Math.min(...xs);
+              const ys = recent.map(h => h.y);
+              const yRange = Math.max(...ys) - Math.min(...ys);
+              // 縦移動が横移動より十分大きくなければ棄却
+              if (yRange < xRange * NOD_VH_RATIO) {
+                nodPhase = 'IDLE';
+                break;
+              }
+            }
+
+            // ピーク追跡: ベースラインから最も離れた点を記録
+            if (Math.abs(deltaY) > Math.abs(nodPeakDelta)) {
+              nodPeakDelta = deltaY;
+              nodPeakUpdated = true;  // MOVING開始後にピークが更新された
+            }
+
+            // 最小持続時間チェック: 短すぎるMOVINGはノイズとして棄却
+            if (timestamp - nodStartTime < NOD_MIN_DURATION) break;
+
+            // 復帰判定: 二段階チェック
+            // V字形状（peakUpdated）: 標準復帰率で判定
+            // 非V字形状: 厳格復帰率 + 大振幅を要求（見下ろし→微揺らぎの誤検出を排除）
+            const peakAbs = Math.abs(nodPeakDelta);
+            const returnAmount = peakAbs - Math.abs(deltaY);
+            const returnRatio = peakAbs > 0 ? returnAmount / peakAbs : 0;
+            let nodConfirmed = false;
+            if (nodPeakUpdated) {
+              // V字形状: MOVING後にさらに変位が増えた → 標準条件
+              nodConfirmed = peakAbs > threshold && returnRatio > NOD_RETURN_RATIO;
+            } else {
+              // 非V字形状: MOVING開始がピーク → 厳格条件（大きな振幅+高い復帰率）
+              nodConfirmed = peakAbs > threshold * NOD_PEAK_AMP_FACTOR && returnRatio > NOD_RETURN_RATIO_STRICT;
+            }
+            if (nodConfirmed) {
+              nodPhase = 'IDLE';
+              showNodNotification();
+              nodData.push({ timestamp, delta: peakAbs, faceH });
+              nodDetections.push(timestamp);
+              lastNodTime = timestamp;
+              // 検出後ベースラインリセット: 連続頷きの2回目を即座に検出可能にする
+              baselineNoseY = sY;
+              baselineNoseX = sX;
+              // 再トリガ防止のため直近履歴を削減
+              headPoseHistory = headPoseHistory.filter(h => h.time > timestamp - 200);
+              document.getElementById('detect-count').textContent = nodDetections.length;
+              const mode = nodPeakUpdated ? 'V字' : '大振幅';
+              console.log(`頷きを検出[${mode}]！ deltaY: ${peakAbs.toFixed(4)}, return: ${(returnRatio*100).toFixed(1)}%, threshold: ${threshold.toFixed(4)}`);
+            }
+            break;
+        }
+      }
+
+      // ========== 表情検出（MediaPipe FaceMeshランドマーク） ==========
+      function detectEmotion(landmarks) {
+        if (!landmarks || landmarks.length < 468) return { emotion: 'neutral', scores: {}, debug: {} };
+
+        const p = (i) => landmarks[i]; // {x, y, z}
+
+        const leftEyeTop = p(159), leftEyeBottom = p(145);
+        const rightEyeTop = p(386), rightEyeBottom = p(374);
+        const leftMouthCorner = p(61), rightMouthCorner = p(291);
+        const upperLip = p(13), lowerLip = p(14);
+        const leftEyebrowInner = p(107), rightEyebrowInner = p(336);
+        const noseTip = p(1);
+
+        const leftEyeCenter = {
+          x: (leftEyeTop.x + leftEyeBottom.x) / 2,
+          y: (leftEyeTop.y + leftEyeBottom.y) / 2
+        };
+        const rightEyeCenter = {
+          x: (rightEyeTop.x + rightEyeBottom.x) / 2,
+          y: (rightEyeTop.y + rightEyeBottom.y) / 2
+        };
+        const faceScale = Math.hypot(
+          rightEyeCenter.x - leftEyeCenter.x,
+          rightEyeCenter.y - leftEyeCenter.y
+        );
+
+        if (faceScale < 0.001) return { emotion: 'neutral', scores: {}, debug: {} };
+
+        const leftEyeH = Math.hypot(leftEyeTop.x - leftEyeBottom.x, leftEyeTop.y - leftEyeBottom.y);
+        const rightEyeH = Math.hypot(rightEyeTop.x - rightEyeBottom.x, rightEyeTop.y - rightEyeBottom.y);
+        const eyeOpenRatio = (leftEyeH + rightEyeH) / 2 / faceScale;
+
+        const mouthCenterY = (upperLip.y + lowerLip.y) / 2;
+        const cornersY = (leftMouthCorner.y + rightMouthCorner.y) / 2;
+        const smileRatio = (mouthCenterY - cornersY) / faceScale;
+
+        const mouthHeight = Math.hypot(upperLip.x - lowerLip.x, upperLip.y - lowerLip.y);
+        const openRatio = mouthHeight / faceScale;
+
+        const browY = (leftEyebrowInner.y + rightEyebrowInner.y) / 2;
+        const browRatio = (noseTip.y - browY) / faceScale;
+
+        const eyeSlope = (rightEyeCenter.y - leftEyeCenter.y) / (rightEyeCenter.x - leftEyeCenter.x);
+        const faceTilt = Math.abs(Math.atan(eyeSlope));
+
+        const smileScore = Math.max(0, (smileRatio - 0.03) * 10);
+
+        const isMouthOpen = openRatio > 0.15;
+        const isEyeOpen = eyeOpenRatio > 0.23 || browRatio > 1.05;
+        let surpriseScore = 0;
+        if (isMouthOpen && isEyeOpen) {
+          surpriseScore = Math.max(0, (openRatio - 0.15) * 5) +
+            Math.max(0, (eyeOpenRatio - 0.23) * 10) +
+            Math.max(0, (browRatio - 1.0) * 3);
+        }
+
+        const sadScore = Math.max(0, (-smileRatio - 0.05) * 8);
+        const angryScore = Math.max(0, (0.85 - browRatio) * 8);
+        const tiltScore = Math.max(0, (faceTilt - 0.1) * 10);
+        const confusedScore = smileScore > 0.5 ? 0 : tiltScore + angryScore * 0.5 + sadScore * 0.5;
+
+        const emotions = {
+          happy: smileScore, surprised: surpriseScore, sad: sadScore,
+          angry: angryScore, confused: confusedScore, neutral: 0.1
+        };
+
+        let maxEmotion = 'neutral', maxScore = 0.1;
+        for (const [emotion, score] of Object.entries(emotions)) {
+          if (score > maxScore) { maxScore = score; maxEmotion = emotion; }
+        }
+
+        return {
+          emotion: maxEmotion,
+          scores: {
+            smile: smileScore.toFixed(2), surprise: surpriseScore.toFixed(2),
+            sad: sadScore.toFixed(2), angry: angryScore.toFixed(2), confused: confusedScore.toFixed(2)
+          },
+          debug: {
+            smileRatio: smileRatio.toFixed(3), openRatio: openRatio.toFixed(3),
+            browRatio: browRatio.toFixed(3), eyeOpen: eyeOpenRatio.toFixed(3)
+          }
+        };
+      }
+
+      // ========== UI通知 ==========
+      function showVRWarning() {
+        const vrWarning = document.getElementById('attention-warning-text');
+        const htmlWarning = document.getElementById('warning');
+        vrWarning.setAttribute('visible', true);
+        htmlWarning.style.display = 'block';
+        setTimeout(() => {
+          vrWarning.setAttribute('visible', false);
+          htmlWarning.style.display = 'none';
+        }, 3000);
+      }
+
+      function showNodNotification() {
+        const vrNotification = document.getElementById('nod-notification-text');
+        const htmlNotification = document.getElementById('nod-indicator');
+        nodCount++;
+        document.getElementById('nod-count').textContent = nodCount;
+        vrNotification.setAttribute('visible', true);
+        htmlNotification.style.display = 'block';
+        setTimeout(() => {
+          vrNotification.setAttribute('visible', false);
+          htmlNotification.style.display = 'none';
+        }, 2000);
+      }
+
+      function drawGazePoint(ctx, x, y) {
+        ctx.clearRect(0, 0, ctx.canvas.width, ctx.canvas.height);
+        ctx.fillStyle = 'red';
+        ctx.beginPath();
+        ctx.arc(x, y, 5, 0, Math.PI * 2);
+        ctx.fill();
+      }
+
+      // ========== MediaPipe FaceMesh 結果コールバック ==========
+      function onFaceMeshResults(results) {
+        if (!results.multiFaceLandmarks || results.multiFaceLandmarks.length === 0) {
+          // キャリブレーション中に顔が消えた場合の警告
+          if (calibrationState === 'COLLECTING' || calibrationState === 'SAMPLING') {
+            document.getElementById('calib-face-warning').style.display = 'block';
+          }
+          return;
+        }
+
+        const landmarks = results.multiFaceLandmarks[0];
+        const now = Date.now();
+
+        // キャリブレーション中はサンプル収集のみ行う
+        if (calibrationState === 'SAMPLING') {
+          const iris = extractIrisRatios(landmarks);
+          if (iris) collectCalibSample(iris);
+          return;
+        }
+        if (calibrationState === 'COLLECTING' || calibrationState === 'PREPARING' || calibrationState === 'PROCESSING') {
+          // キャリブレーション中だがサンプル収集前: 顔検出確認のみ
+          document.getElementById('calib-face-warning').style.display = 'none';
+          return;
+        }
+
+        // 通常のトラッキング処理
+        // 1. 頷き検出（複数ランドマーク + 状態マシン）
+        detectNod(landmarks, now);
+
+        // 2. 表情検出
+        const emotionResult = detectEmotion(landmarks);
+
+        document.getElementById('emotion-main').textContent =
+          `${emotionEmojis[emotionResult.emotion]} ${emotionNames[emotionResult.emotion]}`;
+        document.getElementById('emotion-details').innerHTML =
+          `笑顔:${emotionResult.scores.smile} 驚き:${emotionResult.scores.surprise}<br>` +
+          `<small>SmileRatio:${emotionResult.debug.smileRatio} BrowRatio:${emotionResult.debug.browRatio}</small>`;
+
+        if (now - lastEmotionTime > emotionCooldown) {
+          emotionData.push({ timestamp: now, emotion: emotionResult.emotion, scores: emotionResult.scores });
+          lastEmotionTime = now;
+        }
+
+        // 3. 視線推定（虹彩ランドマーク + キャリブレーション）
+        const gaze = estimateGaze(landmarks);
+        if (gaze) {
+          const overlay = document.getElementById('overlay');
+          const ctx = overlay.getContext('2d');
+          drawGazePoint(ctx, gaze.x, gaze.y);
+          gazeData.push({ timestamp: now, screenX: gaze.x, screenY: gaze.y });
+
+          if (lastGaze) {
+            const dist = Math.hypot(gaze.x - lastGaze.x, gaze.y - lastGaze.y);
+            const dt = now - lastTimestamp;
+            if (dist < gazeThreshold) {
+              stationaryTime += dt;
+              if (stationaryTime > timeThreshold) {
+                showVRWarning();
+                stationaryTime = 0;
+              }
+            } else {
+              stationaryTime = 0;
+            }
+          }
+          lastGaze = gaze;
+          lastTimestamp = now;
+        }
+
+        // デバッグログ（低頻度）
+        if (Math.random() < 0.02) {
+          console.log('FaceMesh landmarks:', landmarks.length, 'Emotion:', emotionResult.emotion);
+        }
+      }
+
+      // ========== カメラ表示トグル ==========
+      document.getElementById('toggle-video-mediapipe').addEventListener('click', () => {
+        const video = document.getElementById('face-video-mediapipe');
+        if (video.style.display === 'none') {
+          video.style.display = 'block';
+          document.getElementById('toggle-video-mediapipe').textContent = '📹 カメラ非表示';
+        } else {
+          video.style.display = 'none';
+          document.getElementById('toggle-video-mediapipe').textContent = '📹 カメラ表示';
+        }
+      });
+
+      // ========== 画像アップロード（スクリーン用） ==========
+      function updateThumbnails() {
+        const container = document.getElementById('image-thumbnails');
+        container.innerHTML = '';
+        uploadedImages.forEach((image) => {
+          const thumbnail = document.createElement('img');
+          thumbnail.src = image.url;
+          thumbnail.className = 'image-thumbnail';
+          if (image.selected) thumbnail.classList.add('selected');
+          thumbnail.addEventListener('click', () => {
+            uploadedImages.forEach(img => (img.selected = false));
+            image.selected = true;
+            document.querySelector('#screen').setAttribute('material', 'src', image.url);
+            adjustScreenAspectRatio(thumbnail);
+            updateThumbnails();
+          });
+          container.appendChild(thumbnail);
+        });
+      }
+
+      document.getElementById('upload-button').addEventListener('click', () => {
+        document.getElementById('image-upload').click();
+      });
+
+      document.getElementById('image-upload').addEventListener('change', (e) => {
+        const file = e.target.files[0];
+        if (!file) return;
+        const reader = new FileReader();
+        reader.onload = (event) => {
+          uploadedImages.forEach(img => (img.selected = false));
+          uploadedImages.push({ url: event.target.result, selected: true });
+          const img = document.createElement('img');
+          img.src = event.target.result;
+          img.onload = function () {
+            document.querySelector('#screen').setAttribute('material', 'src', event.target.result);
+            adjustScreenAspectRatio(this);
+            updateThumbnails();
+          };
+        };
+        reader.readAsDataURL(file);
+      });
+
+      function adjustScreenAspectRatio(imageElement) {
+        const screen = document.querySelector('#screen');
+        const aspectRatio = imageElement.width / imageElement.height;
+        const baseHeight = 3;
+        screen.setAttribute('width', baseHeight * aspectRatio);
+        screen.setAttribute('height', baseHeight);
+      }
+
+      // ========== データ保存 ==========
+      document.getElementById('save-button').addEventListener('click', () => {
+        const combinedData = {
+          gazeData, nodData, emotionData, nodCount,
+          summary: {
+            totalGazePoints: gazeData.length,
+            totalNods: nodCount,
+            totalEmotionRecords: emotionData.length,
+            recordingDuration: gazeData.length > 0 ? gazeData[gazeData.length - 1].timestamp : 0
+          }
+        };
+        const blob = new Blob([JSON.stringify(combinedData, null, 2)], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = 'classroom_tracking_data.json';
+        a.click();
+        URL.revokeObjectURL(url);
+      });
+
+      // ========== デバッグ: スペースバー合図 & 分析 ==========
+      document.addEventListener('keydown', (e) => {
+        if (e.code === 'Space' && !e.repeat) {
+          e.preventDefault();
+          const now = Date.now();
+          const flash = document.getElementById('spacebar-flash');
+          const FP_WINDOW = 3000; // 直近3秒以内に検出があれば誤検出報告とみなす
+
+          // 直近の未報告検出を探す（既にFP報告済みの検出は除外）
+          const recentDetection = [...nodDetections].reverse().find(d =>
+            now - d <= FP_WINDOW && !fpMarkers.some(fp => fp.detection === d)
+          );
+
+          if (recentDetection) {
+            // 誤検出報告: 直近の検出を誤りとしてマーク
+            fpMarkers.push({ t: now, detection: recentDetection });
+            document.getElementById('fp-count').textContent = fpMarkers.length;
+            flash.textContent = '✕ 誤検出マーク';
+            flash.style.background = 'rgba(255, 50, 50, 0.9)';
+            flash.style.display = 'block';
+            setTimeout(() => { flash.style.display = 'none'; }, 500);
+            console.log(`FP marked: detection@${recentDetection} reported@${now} (${now - recentDetection}ms後)`);
+          } else {
+            // 見逃し報告: うなずいたのに検出されなかった
+            spacebarMarkers.push(now);
+            document.getElementById('spacebar-count').textContent = spacebarMarkers.length;
+            flash.textContent = '○ 見逃し報告';
+            flash.style.background = 'rgba(255, 165, 0, 0.9)';
+            flash.style.display = 'block';
+            setTimeout(() => { flash.style.display = 'none'; }, 500);
+            console.log(`FN marked: missed nod #${spacebarMarkers.length} at ${now}`);
+          }
+        }
+      });
+
+      // 分析: 見逃し報告・誤検出報告・検出結果を照合
+      function analyzeNodAccuracy() {
+        // FPマーカーで報告された検出タイムスタンプのセット
+        const reportedFpDetections = new Set(fpMarkers.map(fp => fp.detection));
+
+        // 誤検出報告されていない検出 = 正しい検出候補
+        const validDetections = nodDetections.filter(d => !reportedFpDetections.has(d));
+        const fp = fpMarkers.length; // ユーザーが報告したFP数
+
+        // 見逃し報告（SPACE）に対して正しい検出候補があったか
+        const MATCH_WINDOW = 3000;
+        let tp = validDetections.length; // FP報告されなかった検出は全てTP
+        const fn = spacebarMarkers.length; // 見逃し報告は全てFN
+
+        const total = tp + fp + fn;
+        const precision = (tp + fp) > 0 ? (tp / (tp + fp) * 100).toFixed(1) : 'N/A';
+        const recall = (tp + fn) > 0 ? (tp / (tp + fn) * 100).toFixed(1) : 'N/A';
+        const f1 = (precision !== 'N/A' && recall !== 'N/A')
+          ? (2 * parseFloat(precision) * parseFloat(recall) / (parseFloat(precision) + parseFloat(recall))).toFixed(1)
+          : 'N/A';
+
+        const report = [
+          '===== うなずき検出 分析結果 =====',
+          `システム検出: ${nodDetections.length}回`,
+          `  うち正検出(TP):  ${tp}`,
+          `  うち誤検出(FP):  ${fp} (ユーザー報告)`,
+          `見逃し(FN):        ${fn} (ユーザー報告)`,
+          ``,
+          `Precision (適合率): ${precision}%`,
+          `Recall (再現率):    ${recall}%`,
+          `F1スコア:           ${f1}%`,
+          ``,
+          `フレーム数: ${nodDebugLog.length}`,
+        ];
+
+        // 誤検出の詳細
+        if (fpMarkers.length > 0) {
+          report.push('', '--- 誤検出 詳細 ---');
+          for (const fp of fpMarkers) {
+            const det = fp.detection;
+            // 検出時のセンサーデータを取得
+            const nearby = nodDebugLog.filter(e => Math.abs(e.t - det) < 500);
+            const atDetection = nearby.reduce((best, e) => (!best || Math.abs(e.t - det) < Math.abs(best.t - det)) ? e : best, null);
+            const info = atDetection
+              ? `deltaY=${atDetection.deltaY.toFixed(4)} thresh=${atDetection.threshold.toFixed(4)} yaw=${atDetection.yaw.toFixed(3)}`
+              : 'データなし';
+            report.push(`  検出@${new Date(det).toLocaleTimeString()} → ${info}`);
+          }
+        }
+
+        // 見逃しの詳細
+        if (spacebarMarkers.length > 0) {
+          report.push('', '--- 見逃し 詳細 ---');
+          for (const marker of spacebarMarkers) {
+            const nearby = nodDebugLog.filter(e => Math.abs(e.t - marker) < 1000);
+            const maxDeltaY = nearby.length > 0 ? Math.max(...nearby.map(e => Math.abs(e.deltaY))) : 0;
+            const thresh = nearby.length > 0 ? nearby[0].threshold : 0;
+            report.push(`  見逃し@${new Date(marker).toLocaleTimeString()} → maxDeltaY=${maxDeltaY.toFixed(4)} thresh=${thresh.toFixed(4)}`);
+          }
+        }
+
+        const text = report.join('\n');
+        console.log(text);
+        alert(text);
+        return { tp, fn, fp, precision, recall };
+      }
+
+      // デバッグデータのダウンロード
+      function downloadDebugData() {
+        const data = {
+          spacebarMarkers,
+          fpMarkers,
+          nodDetections,
+          analysis: (spacebarMarkers.length > 0 || fpMarkers.length > 0 || nodDetections.length > 0) ? analyzeNodAccuracy() : null,
+          sensorLog: nodDebugLog,
+          params: {
+            NOD_SMOOTH_ALPHA, BASELINE_ALPHA, NOD_MIN_DELTA_Y,
+            NOD_RETURN_RATIO, NOD_RETURN_RATIO_STRICT, NOD_PEAK_AMP_FACTOR,
+            NOD_MAX_DURATION, NOD_MIN_DURATION,
+            NOD_COOLDOWN, NOD_MAX_YAW_RANGE, NOD_VH_RATIO
+          }
+        };
+        const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `nod_debug_${new Date().toISOString().slice(0,19).replace(/:/g,'-')}.json`;
+        a.click();
+        URL.revokeObjectURL(url);
+      }
+
+      document.getElementById('analyze-nod-btn').addEventListener('click', analyzeNodAccuracy);
+      document.getElementById('download-debug-btn').addEventListener('click', downloadDebugData);
+
+      // 60秒計測トライアル
+      document.getElementById('start-trial-btn').addEventListener('click', () => {
+        // リセット
+        nodDebugLog = [];
+        spacebarMarkers = [];
+        fpMarkers = [];
+        nodDetections = [];
+        nodCount = 0;
+        document.getElementById('nod-count').textContent = '0';
+        document.getElementById('spacebar-count').textContent = '0';
+        document.getElementById('detect-count').textContent = '0';
+        document.getElementById('fp-count').textContent = '0';
+        debugRecording = true;
+
+        const timerEl = document.getElementById('debug-timer');
+        let remaining = 60;
+        timerEl.textContent = `残り: ${remaining}s`;
+        document.getElementById('start-trial-btn').disabled = true;
+
+        const interval = setInterval(() => {
+          remaining--;
+          timerEl.textContent = `残り: ${remaining}s`;
+          if (remaining <= 0) {
+            clearInterval(interval);
+            timerEl.textContent = '完了！「分析」を押してください';
+            document.getElementById('start-trial-btn').disabled = false;
+            // 自動で分析実行
+            setTimeout(() => analyzeNodAccuracy(), 500);
+          }
+        }, 1000);
+      });
+
+      // ========== リサイズ対応 ==========
+      window.addEventListener('resize', () => {
+        const overlay = document.getElementById('overlay');
+        overlay.width = window.innerWidth;
+        overlay.height = window.innerHeight;
+        // 画面サイズ変更でキャリブレーション無効化
+        if (calibrationModel) {
+          calibrationModel = null;
+          calibrationState = 'IDLE';
+          smoothedGaze = null;
+          localStorage.removeItem('gazeCalibration');
+          document.getElementById('start-calibration').textContent = '視線キャリブレーション';
+          console.log('Calibration invalidated due to window resize');
+        }
+      });
+
+      // ========== 初期化 ==========
+      window.onload = async () => {
+        // Overlay canvas
+        const overlay = document.getElementById('overlay');
+        overlay.width = window.innerWidth;
+        overlay.height = window.innerHeight;
+
+        // キャリブレーションボタン
+        document.getElementById('start-calibration').addEventListener('click', () => {
+          startCalibration();
+        });
+
+        // localStorage からキャリブレーション復元
+        try {
+          const stored = JSON.parse(localStorage.getItem('gazeCalibration'));
+          if (stored && stored.wx && stored.wy
+              && stored.screenWidth === window.innerWidth
+              && stored.screenHeight === window.innerHeight) {
+            calibrationModel = { wx: stored.wx, wy: stored.wy };
+            calibrationState = 'CALIBRATED';
+            document.getElementById('start-calibration').textContent = '再キャリブレーション';
+            console.log('Restored calibration from localStorage');
+          }
+        } catch (e) { /* 無視 */ }
+
+        // MediaPipe FaceMesh 初期化
+        const faceMesh = new FaceMesh({
+          locateFile: (file) => `mediapipe/face_mesh/${file}`
+        });
+        faceMesh.setOptions({
+          maxNumFaces: 1,
+          refineLandmarks: true,
+          minDetectionConfidence: 0.5,
+          minTrackingConfidence: 0.5
+        });
+        faceMesh.onResults(onFaceMeshResults);
+
+        // カメラ起動
+        const video = document.getElementById('face-video-mediapipe');
+        const camera = new Camera(video, {
+          onFrame: async () => {
+            await faceMesh.send({ image: video });
+          },
+          width: 640,
+          height: 480
+        });
+        await camera.start();
+        console.log('MediaPipe FaceMesh initialized');
+      };
+    </script>
+  </body>
+</html>

@@ -1,0 +1,28 @@
+# secrets
+.env
+
+# python
+__pycache__/
+*.pyc
+.venv/
+
+# 収集データ（被験者データは git 管理しない）
+Data/
+face_eval/data/*.webm
+face_eval/data/*.json
+!face_eval/data/results/
+nod_debug_*.json
+speech_eval/data/*
+!speech_eval/data/labels.sample.csv
+
+# LaTeX 中間物
+DICOMO2026_format_LaTeX/*.aux
+DICOMO2026_format_LaTeX/*.log
+DICOMO2026_format_LaTeX/*.dvi
+
+# 生成物（pptx のみ残す）
+*.png
+*.docx
+
+# OS
+.DS_Store
