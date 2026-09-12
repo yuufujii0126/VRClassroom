@@ -1,0 +1,2584 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Observation Analysis</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-annotation@3.1.0/dist/chartjs-plugin-annotation.min.js"></script>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:'Segoe UI','Hiragino Sans',sans-serif;background:#0d1117;color:#c9d1d9;display:flex;flex-direction:column;height:100vh;overflow:hidden}
+
+/* Header */
+.header{background:#161b22;border-bottom:1px solid #30363d;padding:12px 20px;display:flex;align-items:center;gap:16px;flex-shrink:0}
+.header a{color:#58a6ff;text-decoration:none;font-size:14px}
+.header a:hover{text-decoration:underline}
+.header h1{font-size:18px;font-weight:600;color:#e6edf3}
+
+/* Layout */
+.layout{display:flex;flex:1;overflow:hidden}
+
+/* Sidebar */
+.sidebar{width:280px;background:#161b22;border-right:1px solid #30363d;display:flex;flex-direction:column;flex-shrink:0;overflow:hidden}
+.sidebar-header{padding:14px 16px;border-bottom:1px solid #30363d;font-size:13px;color:#8b949e;text-transform:uppercase;letter-spacing:0.5px}
+.sidebar-list{flex:1;overflow-y:auto;padding:8px}
+.rec-item{padding:10px 12px;border-radius:8px;cursor:pointer;margin-bottom:4px;display:flex;align-items:flex-start;gap:10px;transition:background 0.15s}
+.rec-item:hover{background:#21262d}
+.rec-item.selected{background:#1f6feb22;border:1px solid #1f6feb44}
+.rec-item input[type=checkbox]{margin-top:3px;accent-color:#58a6ff;flex-shrink:0}
+.rec-info{flex:1;min-width:0}
+.rec-date{font-size:13px;color:#e6edf3;font-weight:500}
+.rec-meta{font-size:11px;color:#8b949e;margin-top:2px}
+.rec-empty{color:#8b949e;font-size:13px;display:flex;flex-direction:column;align-items:center;gap:8px}
+.rec-empty span{font-size:28px}
+.sidebar-loading{padding:20px;text-align:center;color:#8b949e;font-size:13px}
+
+/* Main */
+.main{flex:1;display:flex;flex-direction:column;overflow:hidden}
+
+/* Tabs */
+.tabs{display:flex;gap:0;background:#161b22;border-bottom:1px solid #30363d;padding:0 16px;flex-shrink:0}
+.tab{padding:10px 18px;font-size:13px;color:#8b949e;cursor:pointer;border-bottom:2px solid transparent;transition:all 0.15s}
+.tab:hover{color:#c9d1d9}
+.tab.active{color:#e6edf3;border-bottom-color:#58a6ff}
+
+/* Content */
+.content{flex:1;overflow-y:auto;padding:20px}
+.tab-panel{display:none}
+.tab-panel.active{display:block}
+
+/* Cards */
+.cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:12px;margin-bottom:20px}
+.card{background:#161b22;border:1px solid #30363d;border-radius:10px;padding:16px;text-align:center}
+.card-value{font-size:28px;font-weight:700;color:#e6edf3;margin-bottom:4px}
+.card-label{font-size:12px;color:#8b949e}
+
+/* Section */
+.section{background:#161b22;border:1px solid #30363d;border-radius:10px;padding:16px;margin-bottom:16px}
+.section-title{font-size:13px;color:#8b949e;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:12px}
+.chart-container{position:relative;height:280px}
+.chart-container.tall{height:360px}
+
+/* Participants */
+.participants{display:flex;gap:12px;flex-wrap:wrap}
+.participant{background:#21262d;border-radius:8px;padding:10px 16px;display:flex;align-items:center;gap:8px}
+.participant-dot{width:10px;height:10px;border-radius:50%}
+.participant-role{font-size:11px;color:#8b949e;text-transform:uppercase}
+.participant-name{font-size:14px;color:#e6edf3}
+
+/* Gaze canvas */
+.gaze-canvas-wrap{position:relative;background:#0d1117;border-radius:8px;overflow:hidden;display:flex;gap:16px;flex-wrap:wrap}
+.gaze-canvas-box{flex:1;min-width:300px}
+.gaze-canvas-box h4{font-size:12px;color:#8b949e;margin-bottom:8px;text-transform:uppercase}
+.gaze-canvas-box canvas{width:100%;border-radius:6px;background:#161b22;border:1px solid #30363d}
+
+/* Compare table */
+.compare-table{width:100%;border-collapse:collapse;font-size:13px}
+.compare-table th{text-align:left;padding:8px 12px;color:#8b949e;border-bottom:1px solid #30363d;font-weight:500}
+.compare-table td{padding:8px 12px;border-bottom:1px solid #21262d;color:#c9d1d9}
+
+/* Empty state */
+.empty-state{display:flex;flex-direction:column;align-items:center;justify-content:center;padding:60px 20px;color:#8b949e}
+.empty-state span{font-size:48px;margin-bottom:12px}
+.empty-state p{font-size:14px}
+
+/* Emotion colors */
+.emo-neutral{color:#8b949e}
+.emo-happy{color:#3fb950}
+.emo-confused{color:#f0883e}
+.emo-surprised{color:#58a6ff}
+.emo-sad{color:#6e7681}
+.emo-angry{color:#f85149}
+
+/* Transcript */
+.transcript-controls{display:flex;gap:12px;align-items:center;margin-bottom:16px}
+.transcript-search{flex:1;padding:8px 12px;border-radius:8px;border:1px solid #30363d;background:#0d1117;color:#c9d1d9;font-size:13px;outline:none}
+.transcript-search:focus{border-color:#58a6ff}
+.transcript-search::placeholder{color:#484f58}
+.transcript-status{padding:20px;text-align:center;color:#8b949e;font-size:14px}
+.transcript-list{display:flex;flex-direction:column;gap:2px}
+.transcript-segment{display:flex;gap:12px;padding:8px 12px;border-radius:6px;transition:background 0.15s;align-items:flex-start}
+.transcript-segment:hover{background:#21262d}
+.transcript-time{font-size:12px;color:#8b949e;font-family:'SF Mono','Consolas',monospace;min-width:80px;flex-shrink:0;padding-top:1px}
+.transcript-role{font-size:11px;font-weight:600;min-width:70px;flex-shrink:0;padding:2px 8px;border-radius:4px;text-align:center}
+.transcript-role.lecturer{color:#42a5f5;background:rgba(66,165,245,0.15)}
+.transcript-role.student{color:#66bb6a;background:rgba(102,187,106,0.15)}
+.transcript-text{font-size:13px;color:#e6edf3;line-height:1.5;flex:1}
+.transcript-text mark{background:#f0883e44;color:#f0883e;border-radius:2px;padding:0 2px}
+.transcript-fulltext{margin-top:12px;padding:12px;background:#0d1117;border-radius:8px;border:1px solid #30363d;font-size:13px;color:#c9d1d9;line-height:1.6;white-space:pre-wrap}
+.transcript-role-header{font-size:12px;font-weight:600;margin-bottom:4px}
+
+@media(max-width:768px){
+  .sidebar{width:220px}
+  .cards{grid-template-columns:repeat(2,1fr)}
+}
+</style>
+</head>
+<body>
+
+<div class="header">
+  <a href="index.html" id="back-link">&larr; fujii</a>
+  <h1>Observation Analysis</h1>
+</div>
+
+<div class="layout">
+  <div class="sidebar">
+    <div class="sidebar-header">Recordings</div>
+    <div class="sidebar-list" id="sidebar-list">
+      <div class="sidebar-loading">読み込み中...</div>
+    </div>
+  </div>
+
+  <div class="main">
+    <div class="tabs">
+      <div class="tab active" data-tab="comprehension">納得度</div>
+      <div class="tab" data-tab="overview">Overview</div>
+      <div class="tab" data-tab="timeline">Timeline</div>
+      <div class="tab" data-tab="signals">Signals</div>
+      <div class="tab" data-tab="transcript">Transcript</div>
+      <div class="tab" data-tab="gaze">Gaze</div>
+      <div class="tab" data-tab="headpose">Head Pose</div>
+      <div class="tab" data-tab="compare">Compare</div>
+    </div>
+
+    <div class="content">
+      <!-- 納得度 -->
+      <div class="tab-panel active" id="panel-comprehension">
+        <div id="comprehension-empty" class="empty-state">
+          <span>💭</span>
+          <p>納得度データのあるセッションを選択してください<br><span style="font-size:12px;color:#666">（古い録画には軸スコアが含まれていません）</span></p>
+        </div>
+        <div id="comprehension-content" style="display:none">
+          <div class="cards" id="comprehension-cards"></div>
+          <div class="section">
+            <div class="section-title">統合納得度 時系列（式2: Ĉ<sup>total</sup> = Σ γ<sub>k</sub>·Ĉ<sup>(k)</sup>）</div>
+            <div class="chart-container tall"><canvas id="chart-comp-axes"></canvas></div>
+          </div>
+          <div class="section">
+            <div class="section-title">観点別納得度 Ĉ<sup>(k)</sup>（式1: σ(Σ w<sub>i</sub><sup>(k)</sup>·f<sub>i</sub> + b<sub>k</sub>) — 理解・同意・受容・コミット）</div>
+            <div class="chart-container tall"><canvas id="chart-comp-aspects"></canvas></div>
+          </div>
+          <div class="section">
+            <div class="section-title">補助下位状態スコア（発火トリガ: + 実線=ポジ群 / − 破線=ネガ群）</div>
+            <div class="chart-container tall"><canvas id="chart-comp-substates"></canvas></div>
+          </div>
+          <div class="section">
+            <div class="section-title">バブル発火履歴</div>
+            <div id="comp-bubble-list" style="display:flex;flex-direction:column;gap:6px"></div>
+          </div>
+          <div class="section" id="response-section" style="display:none">
+            <div class="section-title">応答遅延（先生発話終了 → 学生応答）</div>
+            <div class="cards" id="response-cards" style="margin-bottom:12px"></div>
+            <div style="display:flex;gap:16px;flex-wrap:wrap">
+              <div style="flex:1;min-width:280px">
+                <div class="chart-container"><canvas id="chart-response-hist"></canvas></div>
+              </div>
+              <div style="flex:1;min-width:280px;max-height:280px;overflow-y:auto" id="response-list"></div>
+            </div>
+          </div>
+          <div class="section" id="prosody-section" style="display:none">
+            <div class="section-title">プロソディ（声のピッチ・強度・発話速度）</div>
+            <div class="cards" id="prosody-cards" style="margin-bottom:12px"></div>
+            <div class="chart-container tall"><canvas id="chart-prosody-pitch"></canvas></div>
+            <div style="margin-top:12px"><div class="chart-container"><canvas id="chart-prosody-intensity"></canvas></div></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Overview -->
+      <div class="tab-panel" id="panel-overview">
+        <div id="overview-empty" class="empty-state">
+          <span>📊</span>
+          <p>左のリストからセッションを選択してください</p>
+        </div>
+        <div id="overview-content" style="display:none">
+          <div class="cards" id="overview-cards"></div>
+          <div style="display:flex;gap:16px;flex-wrap:wrap">
+            <div class="section" style="flex:1;min-width:280px">
+              <div class="section-title">感情分布</div>
+              <div class="chart-container"><canvas id="chart-emotion-donut"></canvas></div>
+            </div>
+            <div class="section" style="flex:1;min-width:280px">
+              <div class="section-title">参加者</div>
+              <div class="participants" id="overview-participants"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Timeline -->
+      <div class="tab-panel" id="panel-timeline">
+        <div id="timeline-empty" class="empty-state">
+          <span>📈</span>
+          <p>セッションを選択するとタイムラインが表示されます</p>
+        </div>
+        <div id="timeline-content" style="display:none">
+          <div class="section">
+            <div class="section-title">感情タイムライン</div>
+            <div class="chart-container tall"><canvas id="chart-emotion-timeline"></canvas></div>
+          </div>
+          <div class="section">
+            <div class="section-title">発話タイムライン</div>
+            <div class="chart-container"><canvas id="chart-speech-timeline"></canvas></div>
+          </div>
+          <div class="section">
+            <div class="section-title">頷き累積カウント</div>
+            <div class="chart-container"><canvas id="chart-nod-cumulative"></canvas></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Signals (Multimodal evaluation table) -->
+      <div class="tab-panel" id="panel-signals">
+        <div id="signals-empty" class="empty-state">
+          <span>🧭</span>
+          <p>セッションを選択するとマルチモーダル・シグナルが表示されます<br><span style="font-size:12px;color:#666">（古い録画は表情/視線/姿勢のみ抽出されます）</span></p>
+        </div>
+        <div id="signals-content" style="display:none">
+          <div class="cards" id="signals-cards" style="margin-bottom:12px"></div>
+          <div class="section">
+            <div class="section-title">シグナル発火タイムライン（縦軸: シグナル, 横軸: 録画開始からの秒数）</div>
+            <div class="chart-container" style="height:520px"><canvas id="chart-signals-gantt"></canvas></div>
+          </div>
+          <div class="section">
+            <div class="section-title">シグナル別 発火回数・累積アクティブ時間</div>
+            <div id="signals-table-wrap"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Transcript -->
+      <div class="tab-panel" id="panel-transcript">
+        <div id="transcript-empty" class="empty-state">
+          <span>🗣</span>
+          <p>セッションを選択すると文字起こしが表示されます</p>
+        </div>
+        <div id="transcript-content" style="display:none">
+          <div class="transcript-controls">
+            <input type="text" class="transcript-search" id="transcript-search" placeholder="キーワードで検索..." oninput="filterTranscript()">
+          </div>
+          <div class="section" id="transcript-section">
+            <div class="section-title">発話セグメント</div>
+            <div class="transcript-list" id="transcript-list"></div>
+          </div>
+          <div class="section" id="transcript-fulltext-section">
+            <div class="section-title">全文テキスト</div>
+            <div id="transcript-fulltext-container"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Gaze -->
+      <div class="tab-panel" id="panel-gaze">
+        <div id="gaze-empty" class="empty-state">
+          <span>👁</span>
+          <p>セッションを選択すると視線データが表示されます</p>
+        </div>
+        <div id="gaze-content" style="display:none">
+          <div class="section">
+            <div class="section-title">視線分析</div>
+            <div class="gaze-canvas-wrap">
+              <div class="gaze-canvas-box">
+                <h4>ヒートマップ</h4>
+                <canvas id="canvas-heatmap" width="640" height="480"></canvas>
+              </div>
+              <div class="gaze-canvas-box">
+                <h4>軌跡</h4>
+                <canvas id="canvas-trajectory" width="640" height="480"></canvas>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Head Pose -->
+      <div class="tab-panel" id="panel-headpose">
+        <div id="headpose-empty" class="empty-state">
+          <span>🎯</span>
+          <p>セッションを選択すると頭部姿勢データが表示されます</p>
+        </div>
+        <div id="headpose-content" style="display:none">
+          <div class="cards" id="headpose-cards"></div>
+          <div class="section">
+            <div class="section-title">Pitch（上下）/ Yaw（左右）タイムライン</div>
+            <div class="chart-container tall"><canvas id="chart-headpose-timeline"></canvas></div>
+          </div>
+          <div style="display:flex;gap:16px;flex-wrap:wrap">
+            <div class="section" style="flex:1;min-width:280px">
+              <div class="section-title">顔の向き分布</div>
+              <div class="chart-container"><canvas id="chart-headpose-zones"></canvas></div>
+            </div>
+            <div class="section" style="flex:1;min-width:280px">
+              <div class="section-title">動き量の推移</div>
+              <div class="chart-container"><canvas id="chart-headpose-magnitude"></canvas></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Compare -->
+      <div class="tab-panel" id="panel-compare">
+        <div id="compare-empty" class="empty-state">
+          <span>⚖</span>
+          <p>サイドバーで複数セッションにチェックを入れて比較</p>
+        </div>
+        <div id="compare-content" style="display:none">
+          <div class="section">
+            <div class="section-title">比較テーブル</div>
+            <table class="compare-table" id="compare-table">
+              <thead><tr><th>セッション</th><th>時間</th><th>フレーム</th><th>頷き率(/分)</th><th>主要感情</th><th>講師発話率</th><th>学生発話率</th><th>動き量</th><th>後退</th><th>視線不安定</th></tr></thead>
+              <tbody></tbody>
+            </table>
+          </div>
+          <div class="section">
+            <div class="section-title">感情分布比較</div>
+            <div class="chart-container tall"><canvas id="chart-compare-bar"></canvas></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+// ========== Config ==========
+const EMOTION_COLORS = {
+  neutral: '#8b949e', happy: '#3fb950', confused: '#f0883e',
+  surprised: '#58a6ff', sad: '#6e7681', angry: '#f85149'
+};
+const EMOTION_LABELS = {
+  neutral: '無表情', happy: '喜び', confused: '困惑',
+  surprised: '驚き', sad: '悲しみ', angry: '怒り'
+};
+const ROLE_COLORS = { lecturer: '#42a5f5', student: '#66bb6a', observer: '#ab47bc' };
+const ROLE_LABELS = { lecturer: 'Lecturer', student: 'Student', observer: 'Observer' };
+
+// ========== State ==========
+let recordings = [];
+let loadedData = {};  // filename -> parsed JSON
+let selectedFile = null;
+let checkedFiles = new Set();
+
+// Chart instances
+let chartEmotionDonut = null;
+let chartEmotionTimeline = null;
+let chartNodCumulative = null;
+let chartCompareBar = null;
+let chartSpeechTimeline = null;
+let chartHeadposeTimeline = null;
+let chartHeadposeZones = null;
+let chartHeadposeMagnitude = null;
+let chartResponseHist = null;
+let chartProsodyPitch = null;
+let chartProsodyIntensity = null;
+
+// ========== Nginx Proxy ==========
+function getBasePath() {
+  const idx = location.pathname.indexOf('/fujii/');
+  return idx > 0 ? location.pathname.substring(0, idx) : '';
+}
+const BASE = getBasePath();
+
+// ========== Init ==========
+document.addEventListener('DOMContentLoaded', () => {
+  document.getElementById('back-link').href = BASE + '/fujii/index.html';
+  initTabs();
+  loadRecordings();
+});
+
+// ========== Tabs ==========
+function initTabs() {
+  document.querySelectorAll('.tab').forEach(tab => {
+    tab.addEventListener('click', () => {
+      document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+      document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
+      tab.classList.add('active');
+      document.getElementById('panel-' + tab.dataset.tab).classList.add('active');
+    });
+  });
+}
+
+// ========== Load Recordings List ==========
+async function loadRecordings() {
+  try {
+    const res = await fetch(BASE + '/api/data/fujii/observation/recordings');
+    const json = await res.json();
+    recordings = json.recordings || [];
+    renderSidebar();
+  } catch (e) {
+    console.error('Failed to load recordings:', e);
+    document.getElementById('sidebar-list').innerHTML =
+      '<div class="sidebar-loading" style="color:#f85149">読み込み失敗</div>';
+  }
+}
+
+// ========== Render Sidebar ==========
+function renderSidebar() {
+  const list = document.getElementById('sidebar-list');
+  if (recordings.length === 0) {
+    list.innerHTML = '<div style="padding:20px;text-align:center" class="rec-empty"><span>📂</span>録画データなし</div>';
+    return;
+  }
+  list.innerHTML = recordings.map(r => {
+    const ts = filenameToDate(r.filename);
+    const dateStr = ts ? formatDate(ts) : r.filename;
+    const timeStr = ts ? formatTime(ts) : '';
+    const sizeStr = formatSize(r.size);
+    return `
+      <div class="rec-item" data-file="${r.filename}">
+        <input type="checkbox" data-file="${r.filename}" title="比較用に選択">
+        <div class="rec-info" data-file="${r.filename}">
+          <div class="rec-date">${dateStr}</div>
+          <div class="rec-meta">${timeStr} &middot; ${sizeStr}</div>
+        </div>
+      </div>`;
+  }).join('');
+
+  // Click handler: select single
+  list.querySelectorAll('.rec-info').forEach(el => {
+    el.addEventListener('click', () => selectRecording(el.dataset.file));
+  });
+  // Checkbox handler: compare
+  list.querySelectorAll('input[type=checkbox]').forEach(cb => {
+    cb.addEventListener('change', () => {
+      if (cb.checked) checkedFiles.add(cb.dataset.file);
+      else checkedFiles.delete(cb.dataset.file);
+      updateCompareTab();
+    });
+  });
+
+  // Auto-select first with data
+  const first = recordings.find(r => r.size > 400);
+  if (first) selectRecording(first.filename);
+}
+
+// ========== Select Recording ==========
+async function selectRecording(filename) {
+  selectedFile = filename;
+  // Highlight in sidebar
+  document.querySelectorAll('.rec-item').forEach(el => {
+    el.classList.toggle('selected', el.dataset.file === filename);
+  });
+  // Auto-check
+  checkedFiles.add(filename);
+  const cb = document.querySelector(`input[type=checkbox][data-file="${filename}"]`);
+  if (cb) cb.checked = true;
+
+  const data = await loadSessionData(filename);
+  if (!data) return;
+  renderComprehension(data);
+  renderOverview(data);
+  renderTimeline(data);
+  renderSignals(data);  // async fire-and-forget — fetches signals.json then re-renders
+  renderGaze(data);
+  renderHeadPose(data);
+  updateCompareTab();
+  loadTranscript(data);
+}
+
+// ========== Load Session Data ==========
+async function loadSessionData(filename) {
+  if (loadedData[filename]) return loadedData[filename];
+  try {
+    const res = await fetch(BASE + `/fujii/Data/observation/${filename}`);
+    const data = await res.json();
+    loadedData[filename] = data;
+    // Update sidebar meta with frame info
+    const item = document.querySelector(`.rec-item[data-file="${filename}"] .rec-meta`);
+    if (item && data.summary) {
+      const ts = filenameToDate(filename);
+      const timeStr = ts ? formatTime(ts) : '';
+      const dur = formatDuration(data.duration);
+      item.textContent = `${timeStr} \u00b7 ${dur} \u00b7 ${data.summary.totalFrames} frames`;
+    }
+    return data;
+  } catch (e) {
+    console.error('Failed to load session data:', e);
+    return null;
+  }
+}
+
+// ========== 納得度 Tab ==========
+let chartCompAxes = null;
+let chartCompAspects = null;
+let chartCompSub = null;
+
+// 論文 式1 の4観点（理解・同意・受容・コミット）
+const ASPECT_META = {
+  understanding: { label: '理解', color: '#22c55e' },
+  agreement:     { label: '同意', color: '#16a34a' },
+  acceptance:    { label: '受容', color: '#0ea5e9' },
+  commitment:    { label: 'コミット', color: '#8b5cf6' },
+};
+const ASPECT_KEYS = ['understanding', 'agreement', 'acceptance', 'commitment'];
+
+const COMP_PATTERN_LABEL = {
+  high_satisfaction:  { text: '十分納得',     color: '#16a34a', icon: '✓' },
+  low_satisfaction:   { text: '納得度低下',   color: '#f97316', icon: '↓' },
+  high_uncertainty:   { text: '不確実',       color: '#eab308', icon: '?' },
+  high_confusion:     { text: '混乱',         color: '#dc2626', icon: '⚠' },
+  high_disagreement:  { text: '不同意',       color: '#dc2626', icon: '!' },
+  // 旧パターン（後方互換のため残す）
+  full_understanding: { text: '完全納得',     color: '#16a34a', icon: '✓' },
+  bored:              { text: '退屈',         color: '#94a3b8', icon: '😐' },
+  cautious:           { text: '慎重',         color: '#eab308', icon: '?' },
+  giving_up:          { text: '諦め気味',     color: '#f97316', icon: '!' },
+  misconception:      { text: '思い込み',     color: '#dc2626', icon: '⚠' },
+  surface:            { text: '表面納得',     color: '#dc2626', icon: '?' },
+  good_struggle:      { text: 'もがき',       color: '#eab308', icon: '…' },
+  disengaged:         { text: '離脱',         color: '#475569', icon: 'z' },
+};
+
+const SUBSTATE_META = {
+  understanding: { label: '理解度',   color: '#22c55e', sign: '+' },
+  agreement:     { label: '同意度',   color: '#16a34a', sign: '+' },
+  attention:     { label: '注意度',   color: '#0ea5e9', sign: '+' },
+  confidence:    { label: '確信度',   color: '#8b5cf6', sign: '+' },
+  confusion:     { label: '混乱度',   color: '#f97316', sign: '-' },
+  disagreement:  { label: '不同意度', color: '#ef4444', sign: '-' },
+  uncertainty:   { label: '不確実性', color: '#eab308', sign: '-' },
+};
+const POS_SUBSTATES = ['understanding', 'agreement', 'attention', 'confidence'];
+const NEG_SUBSTATES = ['confusion', 'disagreement', 'uncertainty'];
+
+// axisData の各フレームから { satisfaction, aspects, substates } を抜く（旧形式は U/C/E から再計算しない）
+function readAxisFrame(a) {
+  if (a.satisfaction !== undefined && a.substates) {
+    return { satisfaction: a.satisfaction, aspects: a.aspects || null, substates: a.substates };
+  }
+  // 旧 U/C/E 形式: 暫定で U→understanding, C→confidence, E→attention に振って表示。
+  // 納得度は (P-N+1)/2 で N=null 扱い → P平均そのまま
+  const subs = {
+    understanding: typeof a.U === 'number' ? a.U : null,
+    confidence:    typeof a.C === 'number' ? a.C : null,
+    attention:     typeof a.E === 'number' ? a.E : null,
+    agreement: null, confusion: null, disagreement: null, uncertainty: null,
+  };
+  const posVals = POS_SUBSTATES.map(k => subs[k]).filter(v => v !== null);
+  const sat = posVals.length ? (posVals.reduce((a, b) => a + b, 0) / posVals.length) : null;
+  return { satisfaction: sat, substates: subs };
+}
+
+function renderComprehension(data) {
+  const axes = data.axisData || [];
+  const events = data.bubbleEvents || [];
+  const summary = (data.summary && data.summary.comprehension) || null;
+
+  if (axes.length === 0) {
+    document.getElementById('comprehension-empty').style.display = 'flex';
+    document.getElementById('comprehension-content').style.display = 'none';
+    return;
+  }
+  document.getElementById('comprehension-empty').style.display = 'none';
+  document.getElementById('comprehension-content').style.display = 'block';
+
+  // 各フレームを正規化（新形式と旧 U/C/E 形式を吸収）
+  const frames = axes.map(a => ({ t: a.t, ...readAxisFrame(a) }));
+
+  // === サマリーカード ===
+  const sm = summary || {};
+  const meanOf = key => {
+    const vals = frames.map(f => f.substates ? f.substates[key] : null).filter(v => v !== null && v !== undefined);
+    return vals.length ? (vals.reduce((a, b) => a + b, 0) / vals.length) : null;
+  };
+  const meanSat = (() => {
+    const vals = frames.map(f => f.satisfaction).filter(v => v !== null && v !== undefined);
+    return vals.length ? (vals.reduce((a, b) => a + b, 0) / vals.length) : null;
+  })();
+  const meanAspect = key => {
+    const vals = frames.map(f => f.aspects ? f.aspects[key] : null).filter(v => v !== null && v !== undefined);
+    return vals.length ? (vals.reduce((a, b) => a + b, 0) / vals.length) : null;
+  };
+  const fmt = v => (typeof v === 'number') ? v.toFixed(2) : '--';
+  const cards = document.getElementById('comprehension-cards');
+  cards.innerHTML = `
+    <div class="card" style="background:linear-gradient(135deg,#0d1117,#1f2937);border:1px solid #2d3748">
+      <div class="card-value" style="color:#10b981;font-size:32px">${fmt(meanSat)}</div>
+      <div class="card-label">平均 統合納得度 Ĉ<sup>total</sup></div>
+    </div>
+    <div class="card"><div class="card-value" style="color:#22c55e">${fmt(meanAspect('understanding'))}</div><div class="card-label">理解 Ĉ<sup>(理解)</sup></div></div>
+    <div class="card"><div class="card-value" style="color:#16a34a">${fmt(meanAspect('agreement'))}</div><div class="card-label">同意 Ĉ<sup>(同意)</sup></div></div>
+    <div class="card"><div class="card-value" style="color:#0ea5e9">${fmt(meanAspect('acceptance'))}</div><div class="card-label">受容 Ĉ<sup>(受容)</sup></div></div>
+    <div class="card"><div class="card-value" style="color:#8b5cf6">${fmt(meanAspect('commitment'))}</div><div class="card-label">コミット Ĉ<sup>(コミット)</sup></div></div>
+    <div class="card"><div class="card-value" style="color:#f97316;font-size:18px">${fmt(meanOf('confusion'))}</div><div class="card-label">混乱(補助)</div></div>
+    <div class="card"><div class="card-value" style="color:#ef4444;font-size:18px">${fmt(meanOf('disagreement'))}</div><div class="card-label">不同意(補助)</div></div>
+    <div class="card"><div class="card-value" style="color:#eab308;font-size:18px">${fmt(meanOf('uncertainty'))}</div><div class="card-label">不確実(補助)</div></div>
+    <div class="card"><div class="card-value">${sm.bubblesFired || 0}</div><div class="card-label">バブル発火数</div></div>
+  `;
+
+  // === 納得度時系列チャート（メイン） ===
+  const startT = frames[0].t;
+  const labels = frames.map(f => ((f.t - startT) / 1000).toFixed(1));
+  const datasetSat = frames.map(f => f.satisfaction);
+
+  // バブル発火 → 縦線アノテーション
+  const annotations = {};
+  events.filter(e => e.type === 'fire').forEach((e, i) => {
+    const tSec = ((e.t - startT) / 1000).toFixed(1);
+    const meta = COMP_PATTERN_LABEL[e.patternName] || { text: e.patternName, color: '#888', icon: '*' };
+    annotations['fire' + i] = {
+      type: 'line',
+      xMin: tSec, xMax: tSec,
+      borderColor: meta.color,
+      borderWidth: 2,
+      borderDash: e.priority === 'urgent' ? [] : [4, 3],
+      label: {
+        display: true,
+        content: meta.icon + ' ' + meta.text,
+        position: 'start',
+        backgroundColor: meta.color,
+        color: '#fff',
+        font: { size: 10, weight: 'bold' },
+        padding: { top: 2, bottom: 2, left: 5, right: 5 },
+      },
+    };
+  });
+
+  const ctxSat = document.getElementById('chart-comp-axes').getContext('2d');
+  if (chartCompAxes) chartCompAxes.destroy();
+  chartCompAxes = new Chart(ctxSat, {
+    type: 'line',
+    data: {
+      labels,
+      datasets: [
+        {
+          label: '納得度', data: datasetSat,
+          borderColor: '#10b981', backgroundColor: '#10b98144',
+          borderWidth: 3, pointRadius: 0, tension: 0.2, spanGaps: true, fill: true,
+        },
+      ],
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      interaction: { mode: 'index', intersect: false },
+      plugins: {
+        annotation: { annotations },
+        legend: { labels: { color: '#c9d1d9' } },
+        tooltip: { mode: 'index', intersect: false },
+      },
+      scales: {
+        x: {
+          title: { display: true, text: '経過時間 (秒)', color: '#8b949e' },
+          ticks: { color: '#8b949e', maxTicksLimit: 20 },
+          grid: { color: '#21262d' },
+        },
+        y: {
+          min: 0, max: 1,
+          ticks: { color: '#8b949e', stepSize: 0.2 },
+          grid: { color: '#21262d' },
+          title: { display: true, text: '納得度 [0,1]', color: '#8b949e' },
+        },
+      },
+    },
+  });
+
+  // === 観点別納得度 Ĉ^(k) 時系列チャート（式1） ===
+  const aspCanvas = document.getElementById('chart-comp-aspects');
+  if (aspCanvas) {
+    if (chartCompAspects) chartCompAspects.destroy();
+    const aspectDatasets = ASPECT_KEYS.map(key => {
+      const meta = ASPECT_META[key];
+      return {
+        label: meta.label,
+        data: frames.map(f => f.aspects ? f.aspects[key] : null),
+        borderColor: meta.color,
+        backgroundColor: meta.color + '22',
+        borderWidth: 2,
+        pointRadius: 0,
+        tension: 0.2,
+        spanGaps: true,
+      };
+    });
+    chartCompAspects = new Chart(aspCanvas.getContext('2d'), {
+      type: 'line',
+      data: { labels, datasets: aspectDatasets },
+      options: {
+        responsive: true, maintainAspectRatio: false,
+        interaction: { mode: 'index', intersect: false },
+        plugins: {
+          annotation: { annotations },
+          legend: { labels: { color: '#c9d1d9', font: { size: 11 } } },
+          tooltip: { mode: 'index', intersect: false },
+        },
+        scales: {
+          x: {
+            title: { display: true, text: '経過時間 (秒)', color: '#8b949e' },
+            ticks: { color: '#8b949e', maxTicksLimit: 20 },
+            grid: { color: '#21262d' },
+          },
+          y: {
+            min: 0, max: 1,
+            ticks: { color: '#8b949e', stepSize: 0.2 },
+            grid: { color: '#21262d' },
+            title: { display: true, text: '観点別納得度 [0,1]', color: '#8b949e' },
+          },
+        },
+      },
+    });
+  }
+
+  // === 補助下位状態時系列チャート（発火トリガ） ===
+  const subCanvas = document.getElementById('chart-comp-substates');
+  if (subCanvas) {
+    if (chartCompSub) chartCompSub.destroy();
+    const datasets = Object.keys(SUBSTATE_META).map(key => {
+      const meta = SUBSTATE_META[key];
+      return {
+        label: `${meta.sign} ${meta.label}`,
+        data: frames.map(f => f.substates ? f.substates[key] : null),
+        borderColor: meta.color,
+        backgroundColor: meta.color + '22',
+        borderWidth: 1.5,
+        pointRadius: 0,
+        tension: 0.2,
+        spanGaps: true,
+        borderDash: meta.sign === '-' ? [4, 3] : [],
+      };
+    });
+    chartCompSub = new Chart(subCanvas.getContext('2d'), {
+      type: 'line',
+      data: { labels, datasets },
+      options: {
+        responsive: true, maintainAspectRatio: false,
+        interaction: { mode: 'index', intersect: false },
+        plugins: {
+          legend: { labels: { color: '#c9d1d9', font: { size: 11 } } },
+          tooltip: { mode: 'index', intersect: false },
+        },
+        scales: {
+          x: {
+            title: { display: true, text: '経過時間 (秒)', color: '#8b949e' },
+            ticks: { color: '#8b949e', maxTicksLimit: 20 },
+            grid: { color: '#21262d' },
+          },
+          y: {
+            min: 0, max: 1,
+            ticks: { color: '#8b949e', stepSize: 0.2 },
+            grid: { color: '#21262d' },
+            title: { display: true, text: 'スコア [0,1]', color: '#8b949e' },
+          },
+        },
+      },
+    });
+  }
+
+  // === バブル発火履歴リスト ===
+  const list = document.getElementById('comp-bubble-list');
+  const fires = events.filter(e => e.type === 'fire');
+  if (fires.length === 0) {
+    list.innerHTML = '<div style="color:#666;font-size:13px">この録画ではバブルは発火していません</div>';
+  } else {
+    list.innerHTML = fires.map(e => {
+      const meta = COMP_PATTERN_LABEL[e.patternName] || { text: e.patternName, color: '#888', icon: '*' };
+      const tSec = ((e.t - startT) / 1000).toFixed(1);
+      const priorityBadge = e.priority === 'urgent' ? '<span style="background:#dc2626;color:#fff;padding:1px 6px;border-radius:3px;font-size:10px;font-weight:bold;margin-left:6px">緊急</span>' : '';
+      let scoreStr = '';
+      if (typeof e.satisfaction === 'number') {
+        scoreStr = `納得度:${e.satisfaction.toFixed(2)}`;
+      } else if (e.axes) {
+        scoreStr = `U:${e.axes.U.toFixed(2)} C:${e.axes.C.toFixed(2)} E:${e.axes.E.toFixed(2)}`;
+      }
+      return `<div style="display:flex;align-items:center;gap:10px;padding:8px 10px;background:#161b22;border-left:3px solid ${meta.color};border-radius:4px">
+        <span style="font-family:monospace;color:#8b949e;font-size:12px;min-width:50px">${tSec}s</span>
+        <span style="font-weight:bold;color:${meta.color};min-width:80px">${meta.icon} ${meta.text}</span>
+        <span style="font-size:13px;color:#c9d1d9">${e.bubble ? e.bubble.text : ''}</span>
+        ${priorityBadge}
+        <span style="margin-left:auto;font-family:monospace;font-size:11px;color:#666">${scoreStr}</span>
+      </div>`;
+    }).join('');
+  }
+
+  // === 応答遅延セクション ===
+  renderResponseLatency(data, startT);
+
+  // === プロソディセクション ===
+  renderProsody(data, startT);
+}
+
+// ========== 応答遅延 ==========
+const RESPONSE_CATEGORY_META = {
+  immediate:  { label: '即答 (<0.5s)',     color: '#16a34a' },
+  quick:      { label: '即答 (0.5-1.5s)',  color: '#65a30d' },
+  thoughtful: { label: '熟考 (1.5-4s)',    color: '#eab308' },
+  delayed:    { label: '遅延 (4-8s)',      color: '#f97316' },
+  noResponse: { label: '無応答 (>8s)',     color: '#dc2626' },
+};
+const RESPONSE_CATEGORY_ORDER = ['immediate', 'quick', 'thoughtful', 'delayed', 'noResponse'];
+
+function renderResponseLatency(data, startT) {
+  const section = document.getElementById('response-section');
+  const responseEvents = data.responseEvents || [];
+  const responseSummary = (data.summary && data.summary.response) || null;
+
+  if (responseEvents.length === 0) {
+    section.style.display = 'none';
+    return;
+  }
+  section.style.display = '';
+
+  // サマリーカード
+  const cards = document.getElementById('response-cards');
+  const meanLatency = responseSummary && responseSummary.meanLatencyMs != null
+    ? (responseSummary.meanLatencyMs / 1000).toFixed(2) + 's'
+    : '--';
+  const tc = (responseSummary && responseSummary.typeCounts) || {};
+  cards.innerHTML = `
+    <div class="card"><div class="card-value">${responseEvents.length}</div><div class="card-label">応答ペア数</div></div>
+    <div class="card"><div class="card-value">${meanLatency}</div><div class="card-label">平均潜時 (応答あり)</div></div>
+    <div class="card"><div class="card-value" style="color:#66bb6a">${tc.substantive || 0}</div><div class="card-label">本格応答</div></div>
+    <div class="card"><div class="card-value" style="color:#42a5f5">${tc.backchannel || 0}</div><div class="card-label">相づち</div></div>
+    <div class="card"><div class="card-value" style="color:#dc2626">${tc.none || 0}</div><div class="card-label">無応答</div></div>
+  `;
+
+  // ヒストグラム
+  const counts = RESPONSE_CATEGORY_ORDER.map(cat =>
+    responseEvents.filter(e => e.category === cat).length
+  );
+  const colors = RESPONSE_CATEGORY_ORDER.map(cat => RESPONSE_CATEGORY_META[cat].color);
+  const labels = RESPONSE_CATEGORY_ORDER.map(cat => RESPONSE_CATEGORY_META[cat].label);
+
+  const ctx = document.getElementById('chart-response-hist').getContext('2d');
+  if (chartResponseHist) chartResponseHist.destroy();
+  chartResponseHist = new Chart(ctx, {
+    type: 'bar',
+    data: {
+      labels,
+      datasets: [{ data: counts, backgroundColor: colors, borderColor: colors, borderWidth: 1 }],
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: { legend: { display: false }, tooltip: { callbacks: { label: ctx => ctx.parsed.y + ' 件' } } },
+      scales: {
+        x: { ticks: { color: '#8b949e', font: { size: 10 } }, grid: { display: false } },
+        y: { ticks: { color: '#8b949e', stepSize: 1 }, grid: { color: '#21262d' }, beginAtZero: true },
+      },
+    },
+  });
+
+  // イベント一覧
+  const listEl = document.getElementById('response-list');
+  listEl.innerHTML = responseEvents.map(ev => {
+    const tSec = ((ev.t - startT) / 1000).toFixed(1);
+    const meta = RESPONSE_CATEGORY_META[ev.category] || { label: ev.category, color: '#888' };
+    const latencySec = (ev.latencyMs / 1000).toFixed(2);
+    const typeLabel = ev.type === 'substantive' ? '本格' : ev.type === 'backchannel' ? '相づち' : '無';
+    const durStr = ev.durationMs > 0 ? ` ${(ev.durationMs / 1000).toFixed(1)}s` : '';
+    return `<div style="display:flex;align-items:center;gap:8px;padding:6px 10px;background:#161b22;border-left:3px solid ${meta.color};border-radius:4px;margin-bottom:4px;font-size:12px">
+      <span style="font-family:monospace;color:#8b949e;min-width:50px">${tSec}s</span>
+      <span style="color:${meta.color};font-weight:bold;min-width:70px">${latencySec}s</span>
+      <span style="color:#c9d1d9;min-width:50px">${typeLabel}${durStr}</span>
+      <span style="color:#666;font-size:11px;margin-left:auto">${meta.label}</span>
+    </div>`;
+  }).join('');
+}
+
+// ========== プロソディ ==========
+function renderProsody(data, startT) {
+  const section = document.getElementById('prosody-section');
+  const frames = data.prosodyData || [];
+  const summary = (data.summary && data.summary.prosody) || null;
+
+  if (frames.length === 0) {
+    section.style.display = 'none';
+    return;
+  }
+  section.style.display = '';
+
+  // サマリーカード
+  const cards = document.getElementById('prosody-cards');
+  cards.innerHTML = `
+    <div class="card"><div class="card-value">${summary && summary.meanPitchHz != null ? summary.meanPitchHz + ' Hz' : '--'}</div><div class="card-label">平均ピッチ</div></div>
+    <div class="card"><div class="card-value">${summary && summary.meanPitchStdHz != null ? summary.meanPitchStdHz + ' Hz' : '--'}</div><div class="card-label">ピッチ揺らぎ (std)</div></div>
+    <div class="card"><div class="card-value">${summary && summary.meanSpeechRate != null ? summary.meanSpeechRate + '/s' : '--'}</div><div class="card-label">発話速度 (peaks/s)</div></div>
+    <div class="card"><div class="card-value">${summary && summary.maxEndingElongationMs != null ? summary.maxEndingElongationMs + ' ms' : '--'}</div><div class="card-label">最大語尾伸び</div></div>
+    <div class="card"><div class="card-value">${summary ? summary.voicedSamples + '/' + summary.samples : '--'}</div><div class="card-label">有声/全サンプル</div></div>
+  `;
+
+  // ピッチ時系列
+  const labels = frames.map(f => ((f.t - startT) / 1000).toFixed(1));
+  const pitches = frames.map(f => f.pitchHzMean);
+  const pitchStds = frames.map(f => f.pitchHzStd);
+
+  const ctx1 = document.getElementById('chart-prosody-pitch').getContext('2d');
+  if (chartProsodyPitch) chartProsodyPitch.destroy();
+  chartProsodyPitch = new Chart(ctx1, {
+    type: 'line',
+    data: {
+      labels,
+      datasets: [
+        { label: 'pitch (Hz)', data: pitches, borderColor: '#42a5f5', backgroundColor: '#42a5f522', borderWidth: 2, pointRadius: 0, tension: 0.2, spanGaps: true, yAxisID: 'y' },
+        { label: 'pitch std (Hz)', data: pitchStds, borderColor: '#f97316', backgroundColor: '#f9731622', borderWidth: 1.5, pointRadius: 0, tension: 0.2, spanGaps: true, yAxisID: 'y1' },
+      ],
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      interaction: { mode: 'index', intersect: false },
+      plugins: { legend: { labels: { color: '#c9d1d9' } } },
+      scales: {
+        x: {
+          title: { display: true, text: '経過時間 (秒)', color: '#8b949e' },
+          ticks: { color: '#8b949e', maxTicksLimit: 20 }, grid: { color: '#21262d' },
+        },
+        y: {
+          position: 'left',
+          title: { display: true, text: 'pitch (Hz)', color: '#42a5f5' },
+          ticks: { color: '#42a5f5' }, grid: { color: '#21262d' },
+        },
+        y1: {
+          position: 'right',
+          title: { display: true, text: 'pitch std (Hz)', color: '#f97316' },
+          ticks: { color: '#f97316' }, grid: { display: false },
+          beginAtZero: true,
+        },
+      },
+    },
+  });
+
+  // 強度・発話速度
+  const intensities = frames.map(f => f.intensityRms);
+  const rates = frames.map(f => f.speechRateProxy);
+  const ctx2 = document.getElementById('chart-prosody-intensity').getContext('2d');
+  if (chartProsodyIntensity) chartProsodyIntensity.destroy();
+  chartProsodyIntensity = new Chart(ctx2, {
+    type: 'line',
+    data: {
+      labels,
+      datasets: [
+        { label: 'intensity (RMS)', data: intensities, borderColor: '#66bb6a', backgroundColor: '#66bb6a22', borderWidth: 2, pointRadius: 0, tension: 0.2, yAxisID: 'y' },
+        { label: 'speech rate (peaks/s)', data: rates, borderColor: '#ab47bc', backgroundColor: '#ab47bc22', borderWidth: 1.5, pointRadius: 0, tension: 0.2, yAxisID: 'y1' },
+      ],
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      interaction: { mode: 'index', intersect: false },
+      plugins: { legend: { labels: { color: '#c9d1d9' } } },
+      scales: {
+        x: { ticks: { color: '#8b949e', maxTicksLimit: 20 }, grid: { color: '#21262d' } },
+        y: {
+          position: 'left',
+          title: { display: true, text: 'intensity', color: '#66bb6a' },
+          ticks: { color: '#66bb6a' }, grid: { color: '#21262d' },
+          beginAtZero: true,
+        },
+        y1: {
+          position: 'right',
+          title: { display: true, text: 'rate (peaks/s)', color: '#ab47bc' },
+          ticks: { color: '#ab47bc' }, grid: { display: false },
+          beginAtZero: true,
+        },
+      },
+    },
+  });
+}
+
+// ========== Overview Tab ==========
+function renderOverview(data) {
+  document.getElementById('overview-empty').style.display = 'none';
+  document.getElementById('overview-content').style.display = 'block';
+
+  const s = data.summary || {};
+  const dur = data.duration || 0;
+  const topEmotion = getTopEmotion(s.emotions || {});
+
+  // Speech summary (backward compatible)
+  const speech = (s.speech) || {};
+  const lecSpeech = speech.lecturer || {};
+  const stuSpeech = speech.student || {};
+  const lecRatio = lecSpeech.speakingRatio != null ? (lecSpeech.speakingRatio * 100).toFixed(1) + '%' : '--';
+  const stuRatio = stuSpeech.speakingRatio != null ? (stuSpeech.speakingRatio * 100).toFixed(1) + '%' : '--';
+
+  // Head pose from raw data or summary
+  let hpDisplay = '--';
+  const frames = data.faceData || [];
+  const poseFrames = frames.filter(f => f.headPitch !== undefined && f.headPitch !== null);
+  if (poseFrames.length > 0) {
+    const mags = poseFrames.map(f => Math.sqrt(f.headPitch * f.headPitch + (f.headYaw || 0) * (f.headYaw || 0)));
+    const avgMag = mags.reduce((a, b) => a + b, 0) / mags.length;
+    hpDisplay = (avgMag * 180 / Math.PI).toFixed(1) + '\u00b0';
+  } else if (s.headPose) {
+    hpDisplay = (s.headPose.avgMagnitude * 180 / Math.PI).toFixed(1) + '\u00b0';
+  }
+
+  // Cards
+  document.getElementById('overview-cards').innerHTML = `
+    <div class="card"><div class="card-value">${formatDuration(dur)}</div><div class="card-label">録画時間</div></div>
+    <div class="card"><div class="card-value">${s.totalFrames || 0}</div><div class="card-label">フレーム数</div></div>
+    <div class="card"><div class="card-value">${s.totalNods || 0}</div><div class="card-label">頷き回数</div></div>
+    <div class="card"><div class="card-value emo-${topEmotion}">${EMOTION_LABELS[topEmotion] || topEmotion}</div><div class="card-label">主要感情</div></div>
+    <div class="card"><div class="card-value" style="color:#42a5f5">${lecRatio}</div><div class="card-label">講師発話率</div></div>
+    <div class="card"><div class="card-value" style="color:#66bb6a">${stuRatio}</div><div class="card-label">学生発話率</div></div>
+    <div class="card"><div class="card-value" style="color:#d2a8ff">${hpDisplay}</div><div class="card-label">平均動き量</div></div>
+    <div class="card"><div class="card-value" style="color:#ff9800">${s.bodyWithdrawals || 0}</div><div class="card-label">後退回数</div></div>
+    <div class="card"><div class="card-value" style="color:#e040fb">${s.eyeWanderings || 0}</div><div class="card-label">視線不安定回数</div></div>
+  `;
+
+  // Participants
+  const parts = data.participants || {};
+  document.getElementById('overview-participants').innerHTML =
+    ['lecturer','student','observer'].filter(r => parts[r]).map(r => `
+      <div class="participant">
+        <div class="participant-dot" style="background:${ROLE_COLORS[r]}"></div>
+        <div>
+          <div class="participant-role">${ROLE_LABELS[r]}</div>
+          <div class="participant-name">${parts[r]}</div>
+        </div>
+      </div>
+    `).join('');
+
+  // Emotion donut
+  renderEmotionDonut(s.emotions || {});
+}
+
+function renderEmotionDonut(emotions) {
+  const ctx = document.getElementById('chart-emotion-donut').getContext('2d');
+  if (chartEmotionDonut) chartEmotionDonut.destroy();
+
+  const labels = Object.keys(emotions);
+  const values = Object.values(emotions);
+  const colors = labels.map(l => EMOTION_COLORS[l] || '#444');
+
+  chartEmotionDonut = new Chart(ctx, {
+    type: 'doughnut',
+    data: {
+      labels: labels.map(l => EMOTION_LABELS[l] || l),
+      datasets: [{ data: values, backgroundColor: colors, borderColor: '#0d1117', borderWidth: 2 }]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: {
+        legend: { position: 'bottom', labels: { color: '#8b949e', padding: 12, font: { size: 12 } } }
+      }
+    }
+  });
+}
+
+// ========== Timeline Tab ==========
+function renderTimeline(data) {
+  const frames = data.faceData || [];
+  if (frames.length === 0) {
+    document.getElementById('timeline-empty').style.display = 'flex';
+    document.getElementById('timeline-content').style.display = 'none';
+    return;
+  }
+  document.getElementById('timeline-empty').style.display = 'none';
+  document.getElementById('timeline-content').style.display = 'block';
+
+  const startTs = frames[0].timestamp;
+  const times = frames.map(f => ((f.timestamp - startTs) / 1000).toFixed(2));
+
+  renderEmotionTimeline(frames, times);
+  renderSpeechTimeline(data.speechData || [], data.startTime);
+  renderNodCumulative(frames, times);
+}
+
+function renderEmotionTimeline(frames, times) {
+  const ctx = document.getElementById('chart-emotion-timeline').getContext('2d');
+  if (chartEmotionTimeline) chartEmotionTimeline.destroy();
+
+  const emotionList = ['neutral','happy','confused','surprised','sad','angry'];
+  const emotionValues = frames.map(f => emotionList.indexOf(f.emotion));
+
+  // Nod annotations
+  const nodAnnotations = {};
+  frames.forEach((f, i) => {
+    if (f.nod) {
+      nodAnnotations['nod' + i] = {
+        type: 'line', xMin: times[i], xMax: times[i],
+        borderColor: '#3fb95066', borderWidth: 1.5, borderDash: [4,2],
+        label: { display: false }
+      };
+    }
+    // Body withdrawal annotations
+    if (f.bodyWithdrawal) {
+      nodAnnotations['wd' + i] = {
+        type: 'line', xMin: times[i], xMax: times[i],
+        borderColor: '#ff980066', borderWidth: 2, borderDash: [6,3],
+        label: { display: false }
+      };
+    }
+    // Eye wandering annotations
+    if (f.eyeWandering) {
+      nodAnnotations['ew' + i] = {
+        type: 'line', xMin: times[i], xMax: times[i],
+        borderColor: '#e040fb44', borderWidth: 2, borderDash: [2,2],
+        label: { display: false }
+      };
+    }
+  });
+
+  chartEmotionTimeline = new Chart(ctx, {
+    type: 'line',
+    data: {
+      labels: times,
+      datasets: [{
+        label: '感情',
+        data: emotionValues,
+        borderColor: '#58a6ff',
+        backgroundColor: '#58a6ff22',
+        borderWidth: 1.5,
+        pointRadius: 0,
+        stepped: true,
+        fill: true
+      }]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      scales: {
+        x: {
+          title: { display: true, text: '経過時間 (秒)', color: '#8b949e' },
+          ticks: { color: '#8b949e', maxTicksLimit: 20 },
+          grid: { color: '#21262d' }
+        },
+        y: {
+          ticks: {
+            color: '#8b949e',
+            callback: (v) => emotionList[v] ? EMOTION_LABELS[emotionList[v]] : ''
+          },
+          min: -0.5, max: emotionList.length - 0.5,
+          grid: { color: '#21262d' }
+        }
+      },
+      plugins: {
+        legend: { display: false },
+        annotation: { annotations: nodAnnotations },
+        tooltip: {
+          callbacks: {
+            label: (ctx) => {
+              const emo = emotionList[ctx.raw];
+              return emo ? EMOTION_LABELS[emo] : '';
+            }
+          }
+        }
+      }
+    }
+  });
+}
+
+function renderSpeechTimeline(speechData, startTimeISO) {
+  const ctx = document.getElementById('chart-speech-timeline').getContext('2d');
+  if (chartSpeechTimeline) chartSpeechTimeline.destroy();
+
+  if (!speechData || speechData.length === 0) {
+    chartSpeechTimeline = new Chart(ctx, {
+      type: 'scatter',
+      data: { datasets: [] },
+      options: {
+        responsive: true, maintainAspectRatio: false,
+        plugins: { legend: { display: false }, annotation: { annotations: {} } },
+        scales: {
+          x: { title: { display: true, text: '経過時間 (秒)', color: '#8b949e' }, ticks: { color: '#8b949e' }, grid: { color: '#21262d' } },
+          y: { display: false }
+        }
+      }
+    });
+    return;
+  }
+
+  const baseTs = new Date(startTimeISO).getTime();
+  const roleConfig = {
+    lecturer: { y: 1, color: 'rgba(66,165,245,0.35)', label: 'Lecturer' },
+    student:  { y: 0, color: 'rgba(102,187,106,0.35)', label: 'Student' }
+  };
+
+  // Build speaking intervals
+  const annotations = {};
+  let annoIdx = 0;
+  for (const role of ['lecturer', 'student']) {
+    const events = speechData.filter(e => e.role === role);
+    let speakStart = null;
+    for (const ev of events) {
+      if (ev.speaking && speakStart === null) {
+        speakStart = ev.timestamp;
+      } else if (!ev.speaking && speakStart !== null) {
+        const cfg = roleConfig[role];
+        annotations['speech' + annoIdx++] = {
+          type: 'box',
+          xMin: (speakStart - baseTs) / 1000,
+          xMax: (ev.timestamp - baseTs) / 1000,
+          yMin: cfg.y - 0.35,
+          yMax: cfg.y + 0.35,
+          backgroundColor: cfg.color,
+          borderColor: 'transparent'
+        };
+        speakStart = null;
+      }
+    }
+    // If still speaking at end
+    if (speakStart !== null) {
+      const lastTs = speechData[speechData.length - 1].timestamp;
+      const cfg = roleConfig[role];
+      annotations['speech' + annoIdx++] = {
+        type: 'box',
+        xMin: (speakStart - baseTs) / 1000,
+        xMax: (lastTs - baseTs) / 1000,
+        yMin: cfg.y - 0.35,
+        yMax: cfg.y + 0.35,
+        backgroundColor: cfg.color,
+        borderColor: 'transparent'
+      };
+    }
+  }
+
+  const maxSec = speechData.length > 0
+    ? (speechData[speechData.length - 1].timestamp - baseTs) / 1000
+    : 10;
+
+  chartSpeechTimeline = new Chart(ctx, {
+    type: 'scatter',
+    data: { datasets: [
+      { label: 'Lecturer', data: [], backgroundColor: '#42a5f5' },
+      { label: 'Student', data: [], backgroundColor: '#66bb6a' }
+    ]},
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      scales: {
+        x: {
+          type: 'linear', min: 0, max: Math.ceil(maxSec),
+          title: { display: true, text: '経過時間 (秒)', color: '#8b949e' },
+          ticks: { color: '#8b949e' }, grid: { color: '#21262d' }
+        },
+        y: {
+          min: -0.5, max: 1.5,
+          ticks: {
+            color: '#8b949e',
+            callback: v => v === 1 ? 'Lecturer' : v === 0 ? 'Student' : ''
+          },
+          grid: { color: '#21262d' }
+        }
+      },
+      plugins: {
+        legend: { position: 'bottom', labels: { color: '#8b949e', font: { size: 11 } } },
+        annotation: { annotations }
+      }
+    }
+  });
+}
+
+function renderNodCumulative(frames, times) {
+  const ctx = document.getElementById('chart-nod-cumulative').getContext('2d');
+  if (chartNodCumulative) chartNodCumulative.destroy();
+
+  chartNodCumulative = new Chart(ctx, {
+    type: 'line',
+    data: {
+      labels: times,
+      datasets: [{
+        label: '頷きカウント',
+        data: frames.map(f => f.nodCount),
+        borderColor: '#3fb950',
+        backgroundColor: '#3fb95022',
+        borderWidth: 2,
+        pointRadius: 0,
+        fill: true,
+        stepped: true
+      }]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      scales: {
+        x: {
+          title: { display: true, text: '経過時間 (秒)', color: '#8b949e' },
+          ticks: { color: '#8b949e', maxTicksLimit: 20 },
+          grid: { color: '#21262d' }
+        },
+        y: {
+          beginAtZero: true,
+          title: { display: true, text: '累積頷き数', color: '#8b949e' },
+          ticks: { color: '#8b949e', stepSize: 1 },
+          grid: { color: '#21262d' }
+        }
+      },
+      plugins: {
+        legend: { display: false }
+      }
+    }
+  });
+}
+
+// ========== Gaze Tab ==========
+function renderGaze(data) {
+  const frames = data.faceData || [];
+  const gazeFrames = frames.filter(f => f.gaze && f.gaze.x != null);
+  if (gazeFrames.length === 0) {
+    document.getElementById('gaze-empty').style.display = 'flex';
+    document.getElementById('gaze-content').style.display = 'none';
+    return;
+  }
+  document.getElementById('gaze-empty').style.display = 'none';
+  document.getElementById('gaze-content').style.display = 'block';
+
+  renderHeatmap(gazeFrames);
+  renderTrajectory(gazeFrames);
+}
+
+function renderHeatmap(frames) {
+  const canvas = document.getElementById('canvas-heatmap');
+  const ctx = canvas.getContext('2d');
+  const W = canvas.width, H = canvas.height;
+
+  // Find bounds
+  const xs = frames.map(f => f.gaze.x);
+  const ys = frames.map(f => f.gaze.y);
+  const maxX = Math.max(...xs), maxY = Math.max(...ys);
+  const scaleX = maxX > 0 ? (W - 20) / maxX : 1;
+  const scaleY = maxY > 0 ? (H - 20) / maxY : 1;
+  const scale = Math.min(scaleX, scaleY);
+
+  // Clear
+  ctx.fillStyle = '#161b22';
+  ctx.fillRect(0, 0, W, H);
+
+  // Build density grid
+  const gridSize = 8;
+  const cols = Math.ceil(W / gridSize);
+  const rows = Math.ceil(H / gridSize);
+  const grid = new Float32Array(cols * rows);
+
+  frames.forEach(f => {
+    const px = f.gaze.x * scale + 10;
+    const py = f.gaze.y * scale + 10;
+    const gc = Math.floor(px / gridSize);
+    const gr = Math.floor(py / gridSize);
+    // Gaussian spread
+    const radius = 3;
+    for (let dr = -radius; dr <= radius; dr++) {
+      for (let dc = -radius; dc <= radius; dc++) {
+        const r2 = gr + dr, c2 = gc + dc;
+        if (r2 >= 0 && r2 < rows && c2 >= 0 && c2 < cols) {
+          const dist = Math.sqrt(dr * dr + dc * dc);
+          const weight = Math.exp(-dist * dist / (2 * 1.5 * 1.5));
+          grid[r2 * cols + c2] += weight;
+        }
+      }
+    }
+  });
+
+  // Normalize and draw
+  const maxDensity = Math.max(...grid) || 1;
+  for (let r = 0; r < rows; r++) {
+    for (let c = 0; c < cols; c++) {
+      const v = grid[r * cols + c] / maxDensity;
+      if (v < 0.01) continue;
+      // Cool (blue) to hot (red) colormap
+      const h = (1 - v) * 240;
+      ctx.fillStyle = `hsla(${h}, 100%, 50%, ${v * 0.7})`;
+      ctx.fillRect(c * gridSize, r * gridSize, gridSize, gridSize);
+    }
+  }
+}
+
+function renderTrajectory(frames) {
+  const canvas = document.getElementById('canvas-trajectory');
+  const ctx = canvas.getContext('2d');
+  const W = canvas.width, H = canvas.height;
+
+  const xs = frames.map(f => f.gaze.x);
+  const ys = frames.map(f => f.gaze.y);
+  const maxX = Math.max(...xs), maxY = Math.max(...ys);
+  const scaleX = maxX > 0 ? (W - 20) / maxX : 1;
+  const scaleY = maxY > 0 ? (H - 20) / maxY : 1;
+  const scale = Math.min(scaleX, scaleY);
+
+  ctx.fillStyle = '#161b22';
+  ctx.fillRect(0, 0, W, H);
+
+  // Draw trajectory with time-based color (blue -> red)
+  for (let i = 1; i < frames.length; i++) {
+    const t = i / (frames.length - 1);
+    const r = Math.round(t * 255);
+    const b = Math.round((1 - t) * 255);
+    ctx.strokeStyle = `rgba(${r}, 60, ${b}, 0.6)`;
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.moveTo(frames[i - 1].gaze.x * scale + 10, frames[i - 1].gaze.y * scale + 10);
+    ctx.lineTo(frames[i].gaze.x * scale + 10, frames[i].gaze.y * scale + 10);
+    ctx.stroke();
+  }
+
+  // Start/end markers
+  if (frames.length > 0) {
+    const first = frames[0], last = frames[frames.length - 1];
+    // Start
+    ctx.beginPath();
+    ctx.arc(first.gaze.x * scale + 10, first.gaze.y * scale + 10, 5, 0, Math.PI * 2);
+    ctx.fillStyle = '#58a6ff';
+    ctx.fill();
+    ctx.font = '10px sans-serif'; ctx.fillStyle = '#58a6ff';
+    ctx.fillText('Start', first.gaze.x * scale + 18, first.gaze.y * scale + 14);
+    // End
+    ctx.beginPath();
+    ctx.arc(last.gaze.x * scale + 10, last.gaze.y * scale + 10, 5, 0, Math.PI * 2);
+    ctx.fillStyle = '#f85149';
+    ctx.fill();
+    ctx.fillStyle = '#f85149';
+    ctx.fillText('End', last.gaze.x * scale + 18, last.gaze.y * scale + 14);
+  }
+}
+
+// ========== Signals Tab (Multimodal evaluation table) ==========
+// Catalog mirrors observation-room.html SIGNAL_CATALOG. Each derivation function
+// reads from one frame (faceData @ 10Hz) or one prosody sample (1Hz) and returns
+// 'pos' | 'neg' | 'warn' | 'idle' | 'manual' (manual = ASR-required, never auto-active).
+const ANALYSIS_SIGNAL_CATALOG = [
+  // 言語/対話 — require ASR, no automatic derivation yet
+  { id: 'lang-agree',      cat: '言語', name: '同意表現',         dir: '+', source: 'asr' },
+  { id: 'lang-disagree',   cat: '言語', name: '不同意・反論表現',   dir: '-', source: 'asr' },
+  { id: 'lang-understand', cat: '言語', name: '理解・確認応答',     dir: '+', source: 'asr' },
+  { id: 'lang-repair',     cat: '言語', name: '聞き返し・修復要求', dir: '-', source: 'asr' },
+  { id: 'lang-hedge',      cat: '言語', name: '不確実性・hedge',    dir: '-', source: 'asr' },
+  { id: 'lang-stance',     cat: '言語', name: 'スタンス・意見変化', dir: '+', source: 'asr' },
+  { id: 'lang-commit',     cat: '言語', name: '行動意図・コミット', dir: '+', source: 'asr' },
+  { id: 'dial-question',   cat: '対話', name: '質問・根拠要求',     dir: '-', source: 'asr' },
+  // 対話遅延 — derived from prosody pauseMs
+  { id: 'dial-delay',      cat: '対話', name: '応答遅延・沈黙',     dir: '±', source: 'prosody' },
+  // 音声 — derived from prosody
+  { id: 'voice-f0',        cat: '音声', name: '基本周波数 F0',     dir: '±', source: 'prosody' },
+  { id: 'voice-energy',    cat: '音声', name: '音量・エネルギー',   dir: '±', source: 'prosody' },
+  { id: 'voice-rate',      cat: '音声', name: '発話速度',           dir: '±', source: 'prosody' },
+  { id: 'voice-pause',     cat: '音声', name: 'ポーズ長',           dir: '-', source: 'prosody' },
+  { id: 'voice-confidence',cat: '音声', name: '確信度プロソディ',   dir: '±', source: 'prosody' },
+  // 表情 — derived from emotionScores (preferred) or categorical emotion
+  { id: 'face-smile',      cat: '表情', name: '笑顔 (AU6/12)',     dir: '+', source: 'face' },
+  { id: 'face-brow',       cat: '表情', name: '眉ひそめ (AU4)',    dir: '-', source: 'face' },
+  { id: 'face-confused',   cat: '表情', name: '困惑 (AU4+7)',      dir: '-', source: 'face' },
+  // 頭部 — nod (existing) & shake (new field, optional)
+  { id: 'head-nod',        cat: '頭部', name: 'うなずき',           dir: '+', source: 'face' },
+  { id: 'head-shake',      cat: '頭部', name: '首振り',             dir: '-', source: 'face' },
+  // 視線・姿勢
+  { id: 'gaze-target',     cat: '視線', name: '話者・対象への視線', dir: '+', source: 'face' },
+  { id: 'post-lean',       cat: '姿勢', name: '前傾・身体向き',     dir: '+', source: 'face' },
+];
+
+const SIGNAL_STATE_COLORS = {
+  pos: '#22c55e',
+  neg: '#ef4444',
+  warn: '#f59e0b',
+};
+
+// Language/dialogue signal direction mapping (mirrors observation-room.html LANG_SIGNAL_DIR)
+const LANG_SIGNAL_DIR = {
+  'lang-agree': 'pos',
+  'lang-disagree': 'neg',
+  'lang-understand': 'pos',
+  'lang-repair': 'neg',
+  'lang-hedge': 'neg',
+  'lang-stance': 'pos',
+  'lang-commit': 'pos',
+  'dial-question': 'neg',
+};
+
+// Cached signals.json per session filename (avoids refetch on tab switch)
+const loadedSignals = {};
+
+async function fetchSessionSignals(data) {
+  if (!data || !data.startTime) return null;
+  const epoch = new Date(data.startTime).getTime();
+  if (loadedSignals[epoch] !== undefined) return loadedSignals[epoch];
+  try {
+    const res = await fetch(BASE + `/api/observation/signals/${epoch}`);
+    const result = await res.json();
+    // Server returns either the full signals object or {status: 'analyzing'|'transcribing'|'no_data'}
+    if (result && result.per_role) {
+      loadedSignals[epoch] = result;
+      return result;
+    }
+    loadedSignals[epoch] = { _status: result.status || 'no_data' };
+    return loadedSignals[epoch];
+  } catch (e) {
+    console.warn('[signals] fetch failed:', e);
+    loadedSignals[epoch] = { _status: 'error' };
+    return loadedSignals[epoch];
+  }
+}
+
+// Convert signals.json per_role → segments spanning the recording.
+// Returns { segments: {sid: [{start,end,state}]}, evidence: {sid: {role, evidence, confidence}} }
+function deriveLangSegments(signalsData, durSec) {
+  const segments = {};
+  const evidence = {};
+  if (!signalsData || !signalsData.per_role) return { segments, evidence };
+
+  for (const [sid, dir] of Object.entries(LANG_SIGNAL_DIR)) {
+    segments[sid] = [];
+    // OR across roles: a signal is active if any role shows present=true
+    const perRoleInfo = [];
+    for (const role of ['student', 'lecturer']) {
+      const roleData = signalsData.per_role[role];
+      if (!roleData || !roleData.signals) continue;
+      const info = roleData.signals[sid];
+      if (info && info.present) {
+        perRoleInfo.push({
+          role,
+          confidence: info.confidence || 0,
+          evidence: info.evidence || '',
+        });
+      }
+    }
+    if (perRoleInfo.length > 0) {
+      // Emit one segment spanning recording duration (GPT classifies whole recording).
+      segments[sid].push({ start: 0, end: Math.max(0.5, durSec || 0.5), state: dir });
+      // Combine evidence per role for the table display
+      evidence[sid] = perRoleInfo;
+    }
+  }
+  return { segments, evidence };
+}
+
+function deriveFaceSignals(frame) {
+  // Returns { signalId: 'pos'|'neg'|'idle' }
+  // Each signal only emits an active state when its source field is present in the frame;
+  // if the field is undefined the signal stays idle (avoids misleading "always pos" rows
+  // when older recordings lack bodyWithdrawal / eyeWandering / etc).
+  const scores = frame.emotionScores || {};
+  const smile = parseFloat(scores.smile || 0);
+  const angry = parseFloat(scores.angry || 0);
+  const confused = parseFloat(scores.confused || 0);
+  const out = {};
+  // Facial — driven by emotion field (also accepts scores when present)
+  if (frame.emotion !== undefined || Object.keys(scores).length > 0) {
+    out['face-smile']    = (smile > 0.45 || frame.emotion === 'happy')   ? 'pos' : 'idle';
+    out['face-brow']     = (angry > 0.40 || frame.emotion === 'angry')   ? 'neg' : 'idle';
+    out['face-confused'] = (confused > 0.40 || frame.emotion === 'confused') ? 'neg' : 'idle';
+  } else {
+    out['face-smile'] = out['face-brow'] = out['face-confused'] = 'idle';
+  }
+  // Head — nod (nodActive new, nod older) & shake (new field only)
+  out['head-nod']   = (frame.nodActive || frame.nod) ? 'pos' : 'idle';
+  out['head-shake'] = (frame.headShakeActive === true) ? 'neg' : 'idle';
+  // Gaze — needs both gaze position and eyeWandering for ± classification
+  if (frame.gaze && frame.eyeWandering !== undefined) {
+    out['gaze-target'] = frame.eyeWandering ? 'neg' : 'pos';
+  } else if (frame.gaze) {
+    // gaze present but no wandering judgement — assume on-target (mid-era recordings)
+    out['gaze-target'] = 'pos';
+  } else {
+    out['gaze-target'] = 'idle';
+  }
+  // Posture — only active when bodyWithdrawal field is present
+  if (frame.bodyWithdrawal !== undefined) {
+    out['post-lean'] = frame.bodyWithdrawal ? 'neg' : 'pos';
+  } else {
+    out['post-lean'] = 'idle';
+  }
+  return out;
+}
+
+function deriveProsodySignals(sample, baseline) {
+  const out = {};
+  const speaking = !!sample.speaking;
+  // dial-delay & voice-pause — driven by pauseMs
+  const pauseMs = sample.pauseMs || 0;
+  if (pauseMs >= 2500) {
+    out['dial-delay'] = 'neg';
+    out['voice-pause'] = 'neg';
+  } else if (pauseMs >= 1500) {
+    out['dial-delay'] = 'warn';
+    out['voice-pause'] = 'warn';
+  } else {
+    out['dial-delay'] = 'idle';
+    out['voice-pause'] = 'idle';
+  }
+  // F0 / Energy / Rate — flag when significantly outside baseline (z>1)
+  if (speaking && sample.pitchHzMean !== null && sample.pitchHzMean !== undefined &&
+      baseline.pitchMean !== null && baseline.pitchStd !== null && baseline.pitchStd > 0) {
+    const z = (sample.pitchHzMean - baseline.pitchMean) / baseline.pitchStd;
+    if (z > 1.0 || z < -1.0) out['voice-f0'] = 'warn';
+    else out['voice-f0'] = 'pos';
+  } else {
+    out['voice-f0'] = 'idle';
+  }
+  if (speaking && sample.intensityRms && baseline.energyMean !== null) {
+    if (sample.intensityRms > baseline.energyMean * 1.2) out['voice-energy'] = 'pos';
+    else if (sample.intensityRms < baseline.energyMean * 0.6) out['voice-energy'] = 'warn';
+    else out['voice-energy'] = 'pos';
+  } else {
+    out['voice-energy'] = 'idle';
+  }
+  if (speaking && sample.speechRateProxy !== null && sample.speechRateProxy !== undefined &&
+      baseline.rateMean !== null) {
+    const r = sample.speechRateProxy;
+    if (r > baseline.rateMean * 1.3 || r < baseline.rateMean * 0.7) out['voice-rate'] = 'warn';
+    else out['voice-rate'] = 'pos';
+  } else {
+    out['voice-rate'] = 'idle';
+  }
+  // Confidence — high ending elongation = hedging (neg); low pitch variability when speaking = stable (pos)
+  const endMs = sample.endingElongationMs || 0;
+  if (endMs >= 250) {
+    out['voice-confidence'] = 'neg';
+  } else if (speaking && sample.pitchHzStd !== null && sample.pitchHzStd !== undefined) {
+    if (sample.pitchHzStd > 30) out['voice-confidence'] = 'warn';
+    else out['voice-confidence'] = 'pos';
+  } else {
+    out['voice-confidence'] = 'idle';
+  }
+  return out;
+}
+
+// Compute prosody baselines (mean/std) over all voiced samples
+function computeProsodyBaseline(prosodyData) {
+  const voiced = prosodyData.filter(p => p.speaking && p.pitchHzMean !== null && p.pitchHzMean !== undefined);
+  const pitches = voiced.map(p => p.pitchHzMean);
+  const energies = prosodyData.filter(p => p.speaking).map(p => p.intensityRms || 0);
+  const rates = prosodyData.filter(p => p.speaking).map(p => p.speechRateProxy || 0);
+  const mean = arr => arr.length ? arr.reduce((s, x) => s + x, 0) / arr.length : null;
+  const std  = arr => {
+    if (arr.length < 3) return null;
+    const m = arr.reduce((s, x) => s + x, 0) / arr.length;
+    let v = 0;
+    for (const x of arr) v += (x - m) * (x - m);
+    return Math.sqrt(v / arr.length);
+  };
+  return {
+    pitchMean: mean(pitches), pitchStd: std(pitches),
+    energyMean: mean(energies),
+    rateMean: mean(rates),
+  };
+}
+
+// Convert a stream of (timestamp, state) into active segments [{start, end, state}]
+function statesToSegments(events) {
+  const segments = [];
+  let curStart = null;
+  let curState = null;
+  for (const ev of events) {
+    const isActive = ev.state === 'pos' || ev.state === 'neg' || ev.state === 'warn';
+    if (isActive) {
+      if (curState !== ev.state) {
+        if (curStart !== null) segments.push({ start: curStart, end: ev.t, state: curState });
+        curStart = ev.t;
+        curState = ev.state;
+      }
+    } else {
+      if (curStart !== null) {
+        segments.push({ start: curStart, end: ev.t, state: curState });
+        curStart = null;
+        curState = null;
+      }
+    }
+  }
+  // Close last open segment at the final timestamp
+  if (curStart !== null && events.length > 0) {
+    segments.push({ start: curStart, end: events[events.length - 1].t, state: curState });
+  }
+  return segments;
+}
+
+let chartSignalsGantt = null;
+
+async function renderSignals(data) {
+  const faceFrames = data.faceData || [];
+  const prosodyData = data.prosodyData || [];
+  // Fetch GPT signals.json in parallel — may be null when audio not yet analyzed
+  const signalsPromise = fetchSessionSignals(data);
+  const hasFaceOrProsody = faceFrames.length > 0 || prosodyData.length > 0;
+  const signalsData = await signalsPromise;
+  const hasLangData = signalsData && signalsData.per_role;
+  const hasData = hasFaceOrProsody || hasLangData;
+  if (!hasData) {
+    document.getElementById('signals-empty').style.display = 'flex';
+    document.getElementById('signals-content').style.display = 'none';
+    return;
+  }
+  document.getElementById('signals-empty').style.display = 'none';
+  document.getElementById('signals-content').style.display = 'block';
+
+  // Detect data shape — old recordings only have head pose + counts, no booleans/timestamps
+  const hasTimestamps = faceFrames.some(f => f.timestamp);
+  const hasBooleans = faceFrames.some(f => f.nod !== undefined || f.emotion || f.gaze);
+  const recordingStartIso = new Date(data.startTime).getTime();
+  // Estimate frame interval. If timestamps present, use diff. Otherwise assume 10Hz (100ms).
+  let frameIntervalMs = 100;
+  if (hasTimestamps && faceFrames.length >= 2) {
+    const t0 = faceFrames.find(f => f.timestamp)?.timestamp || recordingStartIso;
+    const t1 = [...faceFrames].reverse().find(f => f.timestamp)?.timestamp || t0;
+    frameIntervalMs = Math.max(50, Math.round((t1 - t0) / Math.max(1, faceFrames.length - 1)));
+  }
+  // Synthesize per-frame timestamps when missing
+  const synthT = (i) => recordingStartIso + i * frameIntervalMs;
+  const startEpoch = hasTimestamps && faceFrames[0]?.timestamp
+    ? faceFrames[0].timestamp
+    : prosodyData.length > 0 && prosodyData[0].t
+      ? prosodyData[0].t
+      : recordingStartIso;
+
+  // Build per-signal event streams [{t, state}]
+  const signalStreams = {};
+  for (const s of ANALYSIS_SIGNAL_CATALOG) signalStreams[s.id] = [];
+
+  if (hasBooleans) {
+    // Modern recording — derive from per-frame booleans
+    for (let i = 0; i < faceFrames.length; i++) {
+      const frame = faceFrames[i];
+      const t = frame.timestamp || synthT(i);
+      const states = deriveFaceSignals(frame);
+      for (const [sid, state] of Object.entries(states)) {
+        signalStreams[sid].push({ t, state });
+      }
+    }
+  } else {
+    // Legacy recording — only counts available. Emit explicit pulse events on counter increments.
+    // Each pulse: (t, 'pos'|'neg'), then (t+PULSE_MS, 'idle') — no per-frame idle filler so
+    // statesToSegments correctly closes each segment at the pulse end, not the next frame.
+    const PULSE_MS = 600;
+    let prevNod = 0, prevWander = 0, prevWithdraw = 0, prevShake = 0;
+    for (let i = 0; i < faceFrames.length; i++) {
+      const f = faceFrames[i];
+      const t = f.timestamp || synthT(i);
+      const curNod = f.nodCount || 0;
+      const curWander = f.eyeWanderingCount || 0;
+      const curWithdraw = f.bodyWithdrawalCount || 0;
+      const curShake = f.headShakeCount || 0;
+      if (curNod > prevNod) {
+        signalStreams['head-nod'].push({ t, state: 'pos' });
+        signalStreams['head-nod'].push({ t: t + PULSE_MS, state: 'idle' });
+      }
+      if (curWander > prevWander) {
+        signalStreams['gaze-target'].push({ t, state: 'neg' });
+        signalStreams['gaze-target'].push({ t: t + PULSE_MS, state: 'idle' });
+      }
+      if (curWithdraw > prevWithdraw) {
+        signalStreams['post-lean'].push({ t, state: 'neg' });
+        signalStreams['post-lean'].push({ t: t + PULSE_MS, state: 'idle' });
+      }
+      if (curShake > prevShake) {
+        signalStreams['head-shake'].push({ t, state: 'neg' });
+        signalStreams['head-shake'].push({ t: t + PULSE_MS, state: 'idle' });
+      }
+      prevNod = curNod;
+      prevWander = curWander;
+      prevWithdraw = curWithdraw;
+      prevShake = curShake;
+    }
+  }
+
+  // Prosody-derived signals — compute baselines first
+  const baseline = computeProsodyBaseline(prosodyData);
+  for (const sample of prosodyData) {
+    const t = sample.t || startEpoch;
+    const states = deriveProsodySignals(sample, baseline);
+    for (const [sid, state] of Object.entries(states)) {
+      signalStreams[sid].push({ t, state });
+    }
+  }
+
+  // Convert to segments (in seconds from start)
+  // Sort each stream by timestamp first — legacy branch can push pulse-end events out of order
+  const signalSegments = {};
+  for (const sid of Object.keys(signalStreams)) {
+    signalStreams[sid].sort((a, b) => a.t - b.t);
+    const segs = statesToSegments(signalStreams[sid]);
+    signalSegments[sid] = segs.map(s => ({
+      start: Math.max(0, (s.start - startEpoch) / 1000),
+      end: Math.max(0, (s.end - startEpoch) / 1000),
+      state: s.state,
+    }));
+  }
+
+  // ===== Inject GPT language signals from signals.json =====
+  // GPT classifies the whole recording as a single judgment per role; we emit a
+  // full-span segment when a signal is present in either role. Per-role evidence
+  // is passed to renderSignalsTable for display.
+  const durSec = data.duration ? data.duration / 1000 : 0;
+  const lang = deriveLangSegments(signalsData, durSec);
+  for (const sid of Object.keys(lang.segments)) {
+    if (lang.segments[sid].length > 0) {
+      signalSegments[sid] = (signalSegments[sid] || []).concat(lang.segments[sid]);
+    } else if (!signalSegments[sid]) {
+      signalSegments[sid] = [];
+    }
+  }
+
+  // ===== Summary cards =====
+  let totalAuto = 0, totalActiveSec = 0;
+  let posFires = 0, negFires = 0, warnFires = 0;
+  for (const sid of Object.keys(signalSegments)) {
+    for (const seg of signalSegments[sid]) {
+      totalAuto++;
+      totalActiveSec += seg.end - seg.start;
+      if (seg.state === 'pos') posFires++;
+      else if (seg.state === 'neg') negFires++;
+      else if (seg.state === 'warn') warnFires++;
+    }
+  }
+  // Data quality badge
+  const dataMode = hasBooleans
+    ? (prosodyData.length > 0 ? 'フル (face + prosody)' : 'face のみ')
+    : '旧形式 (カウンタのみ)';
+  const dataModeColor = hasBooleans
+    ? (prosodyData.length > 0 ? '#22c55e' : '#eab308')
+    : '#f97316';
+  // Language analysis status
+  let langMode = '未解析';
+  let langModeColor = '#64748b';
+  if (hasLangData) {
+    const fired = Object.values(lang.evidence).length;
+    langMode = `GPT: ${fired}件`;
+    langModeColor = fired > 0 ? '#22c55e' : '#94a3b8';
+  } else if (signalsData && signalsData._status === 'analyzing') {
+    langMode = 'GPT解析中';
+    langModeColor = '#eab308';
+  } else if (signalsData && signalsData._status === 'transcribing') {
+    langMode = '文字起こし中';
+    langModeColor = '#eab308';
+  } else if (signalsData && signalsData._status === 'no_data') {
+    langMode = '音声なし';
+    langModeColor = '#64748b';
+  }
+  document.getElementById('signals-cards').innerHTML = `
+    <div class="card"><div class="card-value">${totalAuto}</div><div class="card-label">総発火回数</div></div>
+    <div class="card"><div class="card-value" style="color:${SIGNAL_STATE_COLORS.pos}">${posFires}</div><div class="card-label">ポジティブ発火</div></div>
+    <div class="card"><div class="card-value" style="color:${SIGNAL_STATE_COLORS.neg}">${negFires}</div><div class="card-label">ネガティブ発火</div></div>
+    <div class="card"><div class="card-value" style="color:${SIGNAL_STATE_COLORS.warn}">${warnFires}</div><div class="card-label">警告発火</div></div>
+    <div class="card"><div class="card-value">${totalActiveSec.toFixed(1)}s</div><div class="card-label">累積アクティブ時間</div></div>
+    <div class="card"><div class="card-value">${durSec.toFixed(1)}s</div><div class="card-label">録画時間</div></div>
+    <div class="card"><div class="card-value" style="font-size:14px;color:${dataModeColor}">${dataMode}</div><div class="card-label">非言語データ</div></div>
+    <div class="card"><div class="card-value" style="font-size:14px;color:${langModeColor}">${langMode}</div><div class="card-label">言語シグナル</div></div>
+  `;
+
+  // ===== Gantt chart =====
+  renderSignalsGantt(signalSegments, durSec);
+
+  // ===== Per-signal breakdown table =====
+  renderSignalsTable(signalSegments, lang.evidence, signalsData);
+}
+
+function renderSignalsGantt(signalSegments, durSec) {
+  const ctx = document.getElementById('chart-signals-gantt').getContext('2d');
+  if (chartSignalsGantt) chartSignalsGantt.destroy();
+
+  // y-axis labels in reverse order (Chart.js renders bottom-up, but we want top-down so reverse)
+  const labels = ANALYSIS_SIGNAL_CATALOG.map(s => `${s.cat}: ${s.name}`);
+  // Build floating-bar dataset per state color
+  const datasets = [];
+  for (const stateKey of ['pos', 'neg', 'warn']) {
+    const bars = [];
+    ANALYSIS_SIGNAL_CATALOG.forEach((s, idx) => {
+      const segs = signalSegments[s.id] || [];
+      for (const seg of segs) {
+        if (seg.state !== stateKey) continue;
+        bars.push({ x: [seg.start, seg.end], y: labels[idx] });
+      }
+    });
+    datasets.push({
+      label: stateKey === 'pos' ? 'ポジティブ' : stateKey === 'neg' ? 'ネガティブ' : '警告',
+      data: bars,
+      backgroundColor: SIGNAL_STATE_COLORS[stateKey],
+      borderColor: SIGNAL_STATE_COLORS[stateKey],
+      borderWidth: 1,
+      borderSkipped: false,
+      borderRadius: 3,
+    });
+  }
+
+  chartSignalsGantt = new Chart(ctx, {
+    type: 'bar',
+    data: { labels, datasets },
+    options: {
+      indexAxis: 'y',
+      responsive: true,
+      maintainAspectRatio: false,
+      animation: false,
+      plugins: {
+        legend: { position: 'top', labels: { color: '#cbd5e1' } },
+        tooltip: {
+          callbacks: {
+            label: (ctx) => {
+              const x = ctx.raw.x;
+              return `${ctx.dataset.label}: ${x[0].toFixed(1)}s → ${x[1].toFixed(1)}s (${(x[1]-x[0]).toFixed(1)}s)`;
+            },
+          },
+        },
+      },
+      scales: {
+        x: {
+          type: 'linear',
+          min: 0,
+          max: Math.max(durSec, 1),
+          title: { display: true, text: '録画開始からの秒数 (s)', color: '#cbd5e1' },
+          ticks: { color: '#94a3b8' },
+          grid: { color: 'rgba(148,163,184,0.1)' },
+        },
+        y: {
+          stacked: true,
+          ticks: { color: '#cbd5e1', autoSkip: false, font: { size: 11 } },
+          grid: { color: 'rgba(148,163,184,0.08)' },
+        },
+      },
+    },
+  });
+}
+
+function renderSignalsTable(signalSegments, langEvidence, signalsData) {
+  langEvidence = langEvidence || {};
+  const hasLangAttempt = signalsData && (signalsData.per_role || signalsData._status);
+  const langStatus = signalsData && signalsData._status;
+
+  const escapeText = (t) => String(t || '').replace(/[&<>"]/g, c => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;' })[c]);
+
+  const rows = ANALYSIS_SIGNAL_CATALOG.map(s => {
+    const segs = signalSegments[s.id] || [];
+    const isLangSignal = s.source === 'asr';
+    let count = segs.length;
+    let activeSec = segs.reduce((a, x) => a + (x.end - x.start), 0);
+    const stateCounts = { pos: 0, neg: 0, warn: 0 };
+    for (const seg of segs) stateCounts[seg.state] = (stateCounts[seg.state] || 0) + 1;
+    const dirColor = s.dir === '+' ? SIGNAL_STATE_COLORS.pos
+                   : s.dir === '-' ? SIGNAL_STATE_COLORS.neg
+                   : '#f59e0b';
+
+    let valCell;
+    if (isLangSignal && !signalsData?.per_role) {
+      // No GPT data yet — show status
+      const msg = langStatus === 'analyzing' ? 'GPT解析中...'
+                : langStatus === 'transcribing' ? '文字起こし中...'
+                : langStatus === 'no_data' ? '音声なし'
+                : langStatus === 'error' ? '取得失敗'
+                : '未解析';
+      valCell = `<td colspan="4" style="color:#64748b;font-style:italic;font-size:12px">${msg}</td>`;
+    } else if (isLangSignal) {
+      // GPT data available — count is 0 or 1 per role, evidence shown inline
+      const info = langEvidence[s.id];
+      const fired = info ? info.length : 0;
+      const evidenceLine = info
+        ? info.map(r => {
+            const roleLabel = r.role === 'lecturer' ? '講' : '生';
+            const roleColor = r.role === 'lecturer' ? '#42a5f5' : '#66bb6a';
+            const conf = Math.round((r.confidence || 0) * 100);
+            const ev = escapeText(r.evidence).slice(0, 60);
+            return `<span style="color:${roleColor};font-weight:600">[${roleLabel}]</span> <span style="color:#94a3b8">${conf}%</span> ${ev}`;
+          }).join(' / ')
+        : '<span style="color:#64748b">該当なし</span>';
+      valCell = `<td style="text-align:right">${fired}</td>
+         <td colspan="3" style="color:#cbd5e1;font-size:11px">${evidenceLine}</td>`;
+    } else {
+      valCell = `<td style="text-align:right">${count}</td>
+         <td style="text-align:right">${activeSec.toFixed(1)}s</td>
+         <td style="text-align:right;color:${SIGNAL_STATE_COLORS.pos}">${stateCounts.pos || 0}</td>
+         <td style="text-align:right;color:${SIGNAL_STATE_COLORS.neg}">${stateCounts.neg || 0}</td>`;
+    }
+    return `<tr>
+      <td style="color:#94a3b8">${s.cat}</td>
+      <td>${s.name}</td>
+      <td style="text-align:center;color:${dirColor};font-weight:bold">${s.dir}</td>
+      ${valCell}
+    </tr>`;
+  }).join('');
+
+  // GPT prosody/summary footer (when available)
+  let summaryFooter = '';
+  if (signalsData?.per_role) {
+    const roleBlocks = [];
+    for (const role of ['student', 'lecturer']) {
+      const rd = signalsData.per_role[role];
+      if (!rd) continue;
+      const interp = rd.prosody_interpretation || '';
+      const summary = rd.overall_summary || '';
+      if (!interp && !summary) continue;
+      const roleLabel = role === 'lecturer' ? 'Lecturer' : 'Student';
+      const roleColor = role === 'lecturer' ? '#42a5f5' : '#66bb6a';
+      roleBlocks.push(`
+        <div style="margin-top:8px;padding:8px 10px;background:rgba(255,255,255,0.03);border-left:3px solid ${roleColor};border-radius:4px">
+          <div style="color:${roleColor};font-weight:600;font-size:11px;margin-bottom:4px">${roleLabel}</div>
+          ${interp ? `<div style="color:#cbd5e1;font-size:12px;margin-bottom:2px">韻律: ${escapeText(interp)}</div>` : ''}
+          ${summary ? `<div style="color:#94a3b8;font-size:12px">要約: ${escapeText(summary)}</div>` : ''}
+        </div>
+      `);
+    }
+    if (roleBlocks.length > 0) {
+      summaryFooter = `<div style="margin-top:12px">${roleBlocks.join('')}</div>`;
+    }
+  }
+
+  document.getElementById('signals-table-wrap').innerHTML = `
+    <table style="width:100%;border-collapse:collapse;font-size:12px;color:#e2e8f0">
+      <thead>
+        <tr style="border-bottom:1px solid rgba(148,163,184,0.2);color:#94a3b8;font-size:11px;text-transform:uppercase">
+          <th style="text-align:left;padding:6px 4px">カテゴリ</th>
+          <th style="text-align:left;padding:6px 4px">シグナル</th>
+          <th style="text-align:center;padding:6px 4px;width:40px">方向</th>
+          <th style="text-align:right;padding:6px 4px;width:70px">発火数</th>
+          <th style="text-align:right;padding:6px 4px;width:90px">累積/根拠</th>
+          <th style="text-align:right;padding:6px 4px;width:60px">+件</th>
+          <th style="text-align:right;padding:6px 4px;width:60px">−件</th>
+        </tr>
+      </thead>
+      <tbody>${rows}</tbody>
+    </table>
+    ${summaryFooter}
+  `;
+}
+
+// ========== Head Pose Tab ==========
+function renderHeadPose(data) {
+  const frames = data.faceData || [];
+  const poseFrames = frames.filter(f => f.headPitch !== undefined && f.headPitch !== null);
+  if (poseFrames.length === 0) {
+    document.getElementById('headpose-empty').style.display = 'flex';
+    document.getElementById('headpose-content').style.display = 'none';
+    return;
+  }
+  document.getElementById('headpose-empty').style.display = 'none';
+  document.getElementById('headpose-content').style.display = 'block';
+
+  // Compute stats from raw data (works even without server summary)
+  const pitches = poseFrames.map(f => f.headPitch);
+  const yaws = poseFrames.map(f => f.headYaw || 0);
+  const meanArr = arr => arr.reduce((s, v) => s + v, 0) / arr.length;
+  const stdArr = (arr, m) => Math.sqrt(arr.reduce((s, v) => s + (v - m) ** 2, 0) / arr.length);
+  const avgP = meanArr(pitches), avgY = meanArr(yaws);
+  const stdP = stdArr(pitches, avgP), stdY = stdArr(yaws, avgY);
+  const mags = pitches.map((p, i) => Math.sqrt(p * p + yaws[i] * yaws[i]));
+  const avgMag = meanArr(mags);
+
+  // Degrees for display
+  const toDeg = rad => (rad * 180 / Math.PI).toFixed(1);
+
+  // Cards
+  document.getElementById('headpose-cards').innerHTML = `
+    <div class="card"><div class="card-value">${toDeg(avgP)}&deg;</div><div class="card-label">平均Pitch（上下）</div></div>
+    <div class="card"><div class="card-value">${toDeg(avgY)}&deg;</div><div class="card-label">平均Yaw（左右）</div></div>
+    <div class="card"><div class="card-value">${toDeg(stdP)}&deg;</div><div class="card-label">Pitch変動(SD)</div></div>
+    <div class="card"><div class="card-value">${toDeg(stdY)}&deg;</div><div class="card-label">Yaw変動(SD)</div></div>
+    <div class="card"><div class="card-value">${toDeg(avgMag)}&deg;</div><div class="card-label">平均動き量</div></div>
+    <div class="card"><div class="card-value">${poseFrames.length}</div><div class="card-label">計測フレーム</div></div>
+  `;
+
+  const startTs = poseFrames[0].timestamp;
+  const times = poseFrames.map(f => ((f.timestamp - startTs) / 1000).toFixed(2));
+
+  renderHeadPoseTimeline(poseFrames, times);
+  renderHeadPoseZones(pitches, yaws);
+  renderHeadPoseMagnitude(mags, times, data.speechData || [], data.startTime, poseFrames);
+}
+
+function renderHeadPoseTimeline(frames, times) {
+  const ctx = document.getElementById('chart-headpose-timeline').getContext('2d');
+  if (chartHeadposeTimeline) chartHeadposeTimeline.destroy();
+
+  const pitchDeg = frames.map(f => f.headPitch * 180 / Math.PI);
+  const yawDeg = frames.map(f => (f.headYaw || 0) * 180 / Math.PI);
+
+  // Nod annotations (where nodCount increases)
+  const nodAnnotations = {};
+  for (let i = 1; i < frames.length; i++) {
+    if (frames[i].nodCount > frames[i - 1].nodCount) {
+      nodAnnotations['nod' + i] = {
+        type: 'line', xMin: times[i], xMax: times[i],
+        borderColor: '#3fb95066', borderWidth: 2, borderDash: [4, 2]
+      };
+    }
+  }
+
+  chartHeadposeTimeline = new Chart(ctx, {
+    type: 'line',
+    data: {
+      labels: times,
+      datasets: [
+        {
+          label: 'Pitch (上下)',
+          data: pitchDeg,
+          borderColor: '#58a6ff',
+          backgroundColor: '#58a6ff22',
+          borderWidth: 1.5,
+          pointRadius: 0,
+          fill: true
+        },
+        {
+          label: 'Yaw (左右)',
+          data: yawDeg,
+          borderColor: '#f0883e',
+          backgroundColor: '#f0883e22',
+          borderWidth: 1.5,
+          pointRadius: 0,
+          fill: true
+        }
+      ]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      interaction: { mode: 'index', intersect: false },
+      scales: {
+        x: {
+          title: { display: true, text: '経過時間 (秒)', color: '#8b949e' },
+          ticks: { color: '#8b949e', maxTicksLimit: 20 },
+          grid: { color: '#21262d' }
+        },
+        y: {
+          title: { display: true, text: '角度 (度)', color: '#8b949e' },
+          ticks: { color: '#8b949e' },
+          grid: { color: '#21262d' }
+        }
+      },
+      plugins: {
+        legend: { position: 'bottom', labels: { color: '#8b949e', font: { size: 11 } } },
+        annotation: { annotations: nodAnnotations },
+        tooltip: {
+          callbacks: {
+            label: (ctx) => `${ctx.dataset.label}: ${ctx.parsed.y.toFixed(1)}°`
+          }
+        }
+      }
+    }
+  });
+}
+
+function renderHeadPoseZones(pitches, yaws) {
+  const ctx = document.getElementById('chart-headpose-zones').getContext('2d');
+  if (chartHeadposeZones) chartHeadposeZones.destroy();
+
+  const THRESHOLD = 0.08;
+  const zones = { center: 0, up: 0, down: 0, left: 0, right: 0 };
+  for (let i = 0; i < pitches.length; i++) {
+    const p = pitches[i], y = yaws[i] || 0;
+    if (Math.abs(p) < THRESHOLD && Math.abs(y) < THRESHOLD) {
+      zones.center++;
+    } else if (Math.abs(p) >= Math.abs(y)) {
+      if (p < 0) zones.down++; else zones.up++;
+    } else {
+      if (y < 0) zones.left++; else zones.right++;
+    }
+  }
+
+  const zoneLabels = { center: '正面', up: '上', down: '下', left: '左', right: '右' };
+  const zoneColors = { center: '#8b949e', up: '#58a6ff', down: '#3fb950', left: '#f0883e', right: '#d2a8ff' };
+
+  chartHeadposeZones = new Chart(ctx, {
+    type: 'polarArea',
+    data: {
+      labels: Object.keys(zones).map(k => zoneLabels[k]),
+      datasets: [{
+        data: Object.values(zones),
+        backgroundColor: Object.keys(zones).map(k => zoneColors[k] + '88'),
+        borderColor: Object.keys(zones).map(k => zoneColors[k]),
+        borderWidth: 1.5
+      }]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: {
+        legend: { position: 'bottom', labels: { color: '#8b949e', font: { size: 11 } } },
+        tooltip: {
+          callbacks: {
+            label: (ctx) => {
+              const total = pitches.length;
+              const pct = (ctx.raw / total * 100).toFixed(1);
+              return `${ctx.label}: ${ctx.raw} フレーム (${pct}%)`;
+            }
+          }
+        }
+      },
+      scales: {
+        r: {
+          ticks: { color: '#8b949e', backdropColor: 'transparent' },
+          grid: { color: '#21262d' }
+        }
+      }
+    }
+  });
+}
+
+function renderHeadPoseMagnitude(magnitudes, times, speechData, startTimeISO, frames) {
+  const ctx = document.getElementById('chart-headpose-magnitude').getContext('2d');
+  if (chartHeadposeMagnitude) chartHeadposeMagnitude.destroy();
+
+  const magDeg = magnitudes.map(m => m * 180 / Math.PI);
+
+  // Sliding window average (20 frames)
+  const windowSize = Math.min(20, Math.floor(magnitudes.length / 3)) || 1;
+  const smoothed = [];
+  for (let i = 0; i < magDeg.length; i++) {
+    const start = Math.max(0, i - Math.floor(windowSize / 2));
+    const end = Math.min(magDeg.length, i + Math.ceil(windowSize / 2));
+    let sum = 0;
+    for (let j = start; j < end; j++) sum += magDeg[j];
+    smoothed.push(sum / (end - start));
+  }
+
+  // Speech annotations
+  const speechAnnotations = {};
+  if (speechData && speechData.length > 0 && startTimeISO) {
+    const baseTs = new Date(startTimeISO).getTime();
+    const frameStart = frames[0].timestamp;
+    let annoIdx = 0;
+    for (const role of ['lecturer', 'student']) {
+      const events = speechData.filter(e => e.role === role);
+      let speakStart = null;
+      const color = role === 'lecturer' ? 'rgba(66,165,245,0.12)' : 'rgba(102,187,106,0.12)';
+      for (const ev of events) {
+        if (ev.speaking && speakStart === null) {
+          speakStart = ev.timestamp;
+        } else if (!ev.speaking && speakStart !== null) {
+          speechAnnotations['sp' + annoIdx++] = {
+            type: 'box',
+            xMin: ((speakStart - frameStart) / 1000).toFixed(2),
+            xMax: ((ev.timestamp - frameStart) / 1000).toFixed(2),
+            backgroundColor: color, borderColor: 'transparent'
+          };
+          speakStart = null;
+        }
+      }
+      if (speakStart !== null) {
+        const lastTs = frames[frames.length - 1].timestamp;
+        speechAnnotations['sp' + annoIdx++] = {
+          type: 'box',
+          xMin: ((speakStart - frameStart) / 1000).toFixed(2),
+          xMax: ((lastTs - frameStart) / 1000).toFixed(2),
+          backgroundColor: color, borderColor: 'transparent'
+        };
+      }
+    }
+  }
+
+  chartHeadposeMagnitude = new Chart(ctx, {
+    type: 'line',
+    data: {
+      labels: times,
+      datasets: [
+        {
+          label: '動き量',
+          data: magDeg,
+          borderColor: '#d2a8ff44',
+          borderWidth: 0.5,
+          pointRadius: 0,
+          fill: false
+        },
+        {
+          label: '動き量(平滑化)',
+          data: smoothed,
+          borderColor: '#d2a8ff',
+          backgroundColor: '#d2a8ff22',
+          borderWidth: 2,
+          pointRadius: 0,
+          fill: true
+        }
+      ]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      interaction: { mode: 'index', intersect: false },
+      scales: {
+        x: {
+          title: { display: true, text: '経過時間 (秒)', color: '#8b949e' },
+          ticks: { color: '#8b949e', maxTicksLimit: 20 },
+          grid: { color: '#21262d' }
+        },
+        y: {
+          beginAtZero: true,
+          title: { display: true, text: '動き量 (度)', color: '#8b949e' },
+          ticks: { color: '#8b949e' },
+          grid: { color: '#21262d' }
+        }
+      },
+      plugins: {
+        legend: { position: 'bottom', labels: { color: '#8b949e', font: { size: 11 } } },
+        annotation: { annotations: speechAnnotations },
+        tooltip: {
+          callbacks: {
+            label: (ctx) => `${ctx.dataset.label}: ${ctx.parsed.y.toFixed(1)}°`
+          }
+        }
+      }
+    }
+  });
+}
+
+// ========== Compare Tab ==========
+async function updateCompareTab() {
+  if (checkedFiles.size < 1) {
+    document.getElementById('compare-empty').style.display = 'flex';
+    document.getElementById('compare-content').style.display = 'none';
+    return;
+  }
+
+  // Load all checked data
+  const entries = [];
+  for (const f of checkedFiles) {
+    const d = await loadSessionData(f);
+    if (d) entries.push({ filename: f, data: d });
+  }
+
+  if (entries.length === 0) {
+    document.getElementById('compare-empty').style.display = 'flex';
+    document.getElementById('compare-content').style.display = 'none';
+    return;
+  }
+
+  document.getElementById('compare-empty').style.display = 'none';
+  document.getElementById('compare-content').style.display = 'block';
+
+  // Table
+  const tbody = document.querySelector('#compare-table tbody');
+  tbody.innerHTML = entries.map(e => {
+    const s = e.data.summary || {};
+    const dur = e.data.duration || 0;
+    const nodRate = dur > 0 ? ((s.totalNods || 0) / (dur / 60000)).toFixed(1) : '0.0';
+    const topEmo = getTopEmotion(s.emotions || {});
+    const ts = filenameToDate(e.filename);
+    const label = ts ? `${formatDate(ts)} ${formatTime(ts)}` : e.filename;
+    const sp = s.speech || {};
+    const lecR = sp.lecturer ? (sp.lecturer.speakingRatio * 100).toFixed(1) + '%' : '--';
+    const stuR = sp.student ? (sp.student.speakingRatio * 100).toFixed(1) + '%' : '--';
+    // Head pose from raw data or summary
+    let hpVal = '--';
+    const fd = e.data.faceData || [];
+    const hpFrames = fd.filter(f => f.headPitch !== undefined && f.headPitch !== null);
+    if (hpFrames.length > 0) {
+      const ms = hpFrames.map(f => Math.sqrt(f.headPitch * f.headPitch + (f.headYaw || 0) * (f.headYaw || 0)));
+      hpVal = (ms.reduce((a, b) => a + b, 0) / ms.length * 180 / Math.PI).toFixed(1) + '\u00b0';
+    } else if (s.headPose) {
+      hpVal = (s.headPose.avgMagnitude * 180 / Math.PI).toFixed(1) + '\u00b0';
+    }
+    return `<tr>
+      <td>${label}</td>
+      <td>${formatDuration(dur)}</td>
+      <td>${s.totalFrames || 0}</td>
+      <td>${nodRate}</td>
+      <td class="emo-${topEmo}">${EMOTION_LABELS[topEmo] || topEmo}</td>
+      <td style="color:#42a5f5">${lecR}</td>
+      <td style="color:#66bb6a">${stuR}</td>
+      <td style="color:#d2a8ff">${hpVal}</td>
+      <td style="color:#ff9800">${s.bodyWithdrawals || 0}</td>
+      <td style="color:#e040fb">${s.eyeWanderings || 0}</td>
+    </tr>`;
+  }).join('');
+
+  // Bar chart
+  renderCompareBar(entries);
+}
+
+function renderCompareBar(entries) {
+  const ctx = document.getElementById('chart-compare-bar').getContext('2d');
+  if (chartCompareBar) chartCompareBar.destroy();
+
+  const allEmotions = ['neutral','happy','confused','surprised','sad','angry'];
+  const labels = entries.map(e => {
+    const ts = filenameToDate(e.filename);
+    return ts ? formatTime(ts) : e.filename.slice(0, 16);
+  });
+
+  const datasets = allEmotions.map(emo => ({
+    label: EMOTION_LABELS[emo],
+    data: entries.map(e => {
+      const s = e.data.summary || {};
+      const total = s.totalFrames || 1;
+      return (((s.emotions || {})[emo] || 0) / total * 100).toFixed(1);
+    }),
+    backgroundColor: EMOTION_COLORS[emo],
+    borderColor: EMOTION_COLORS[emo],
+    borderWidth: 1
+  }));
+
+  chartCompareBar = new Chart(ctx, {
+    type: 'bar',
+    data: { labels, datasets },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      scales: {
+        x: { stacked: true, ticks: { color: '#8b949e' }, grid: { color: '#21262d' } },
+        y: {
+          stacked: true, beginAtZero: true, max: 100,
+          title: { display: true, text: '割合 (%)', color: '#8b949e' },
+          ticks: { color: '#8b949e' },
+          grid: { color: '#21262d' }
+        }
+      },
+      plugins: {
+        legend: { position: 'bottom', labels: { color: '#8b949e', font: { size: 11 } } }
+      }
+    }
+  });
+}
+
+// ========== Transcript Tab ==========
+let currentTranscriptData = null;
+
+async function loadTranscript(data) {
+  const emptyEl = document.getElementById('transcript-empty');
+  const contentEl = document.getElementById('transcript-content');
+
+  if (!data || !data.startTime) {
+    emptyEl.style.display = 'flex';
+    contentEl.style.display = 'none';
+    return;
+  }
+
+  // Derive the session timestamp (epoch ms) from the recording startTime
+  const startEpoch = new Date(data.startTime).getTime();
+
+  try {
+    const res = await fetch(BASE + `/api/observation/transcript/${startEpoch}`);
+    const result = await res.json();
+
+    if (result.status === 'no_audio') {
+      emptyEl.innerHTML = '<span>🗣</span><p>このセッションの音声データがありません</p>';
+      emptyEl.style.display = 'flex';
+      contentEl.style.display = 'none';
+      currentTranscriptData = null;
+      return;
+    }
+
+    if (result.status === 'transcribing') {
+      emptyEl.innerHTML = '<span>⏳</span><p>文字起こし処理中...</p>';
+      emptyEl.style.display = 'flex';
+      contentEl.style.display = 'none';
+      currentTranscriptData = null;
+      return;
+    }
+
+    // We have transcript data
+    currentTranscriptData = result;
+    emptyEl.style.display = 'none';
+    contentEl.style.display = 'block';
+    renderTranscript(result);
+  } catch (e) {
+    console.error('Failed to load transcript:', e);
+    emptyEl.innerHTML = '<span>⚠</span><p>文字起こしの読み込みに失敗しました</p>';
+    emptyEl.style.display = 'flex';
+    contentEl.style.display = 'none';
+    currentTranscriptData = null;
+  }
+}
+
+function renderTranscript(data) {
+  const tracks = data.tracks || {};
+  const listEl = document.getElementById('transcript-list');
+  const fulltextEl = document.getElementById('transcript-fulltext-container');
+
+  // Build merged segment list sorted by time
+  const allSegments = [];
+  for (const [role, track] of Object.entries(tracks)) {
+    if (track.segments) {
+      for (const seg of track.segments) {
+        if (seg.text && seg.text.trim()) {
+          allSegments.push({ ...seg, role });
+        }
+      }
+    }
+  }
+  allSegments.sort((a, b) => a.start - b.start);
+
+  if (allSegments.length === 0) {
+    listEl.innerHTML = '<div class="transcript-status">文字起こしセグメントが空です</div>';
+  } else {
+    listEl.innerHTML = allSegments.map((seg, i) => `
+      <div class="transcript-segment" data-index="${i}">
+        <span class="transcript-time">${formatTimestamp(seg.start)} - ${formatTimestamp(seg.end)}</span>
+        <span class="transcript-role ${seg.role}">${seg.role === 'lecturer' ? 'Lecturer' : 'Student'}</span>
+        <span class="transcript-text">${escapeHtml(seg.text)}</span>
+      </div>
+    `).join('');
+  }
+
+  // Full text per role
+  let fulltextHtml = '';
+  for (const [role, track] of Object.entries(tracks)) {
+    if (track.text && track.text.trim()) {
+      const color = role === 'lecturer' ? '#42a5f5' : '#66bb6a';
+      const label = role === 'lecturer' ? 'Lecturer' : 'Student';
+      fulltextHtml += `
+        <div class="transcript-role-header" style="color:${color}">${label} (${formatTimestamp(track.duration || 0)})</div>
+        <div class="transcript-fulltext">${escapeHtml(track.text)}</div>
+      `;
+    }
+  }
+  fulltextEl.innerHTML = fulltextHtml || '<div class="transcript-status">テキストなし</div>';
+
+  // Store segments for filtering
+  window._transcriptSegments = allSegments;
+}
+
+function filterTranscript() {
+  const query = document.getElementById('transcript-search').value.trim().toLowerCase();
+  const segments = window._transcriptSegments || [];
+  const listEl = document.getElementById('transcript-list');
+
+  if (!query) {
+    // Show all
+    listEl.innerHTML = segments.map((seg, i) => `
+      <div class="transcript-segment" data-index="${i}">
+        <span class="transcript-time">${formatTimestamp(seg.start)} - ${formatTimestamp(seg.end)}</span>
+        <span class="transcript-role ${seg.role}">${seg.role === 'lecturer' ? 'Lecturer' : 'Student'}</span>
+        <span class="transcript-text">${escapeHtml(seg.text)}</span>
+      </div>
+    `).join('');
+    return;
+  }
+
+  const filtered = segments.filter(seg => seg.text.toLowerCase().includes(query));
+  if (filtered.length === 0) {
+    listEl.innerHTML = `<div class="transcript-status">「${escapeHtml(query)}」に一致するセグメントがありません</div>`;
+    return;
+  }
+
+  listEl.innerHTML = filtered.map((seg, i) => {
+    const highlighted = highlightText(seg.text, query);
+    return `
+      <div class="transcript-segment" data-index="${i}">
+        <span class="transcript-time">${formatTimestamp(seg.start)} - ${formatTimestamp(seg.end)}</span>
+        <span class="transcript-role ${seg.role}">${seg.role === 'lecturer' ? 'Lecturer' : 'Student'}</span>
+        <span class="transcript-text">${highlighted}</span>
+      </div>
+    `;
+  }).join('');
+}
+
+function highlightText(text, query) {
+  const escaped = escapeHtml(text);
+  const queryEscaped = escapeHtml(query);
+  const regex = new RegExp(`(${queryEscaped.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')})`, 'gi');
+  return escaped.replace(regex, '<mark>$1</mark>');
+}
+
+function formatTimestamp(seconds) {
+  if (typeof seconds !== 'number') return '0:00';
+  const m = Math.floor(seconds / 60);
+  const s = Math.floor(seconds % 60);
+  return `${m}:${String(s).padStart(2, '0')}`;
+}
+
+function escapeHtml(str) {
+  return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+
+// ========== Utilities ==========
+function filenameToDate(filename) {
+  // 2026-02-12T16-07-54-318Z.json -> Date
+  const m = filename.match(/^(\d{4})-(\d{2})-(\d{2})T(\d{2})-(\d{2})-(\d{2})-(\d+)Z\.json$/);
+  if (!m) return null;
+  return new Date(`${m[1]}-${m[2]}-${m[3]}T${m[4]}:${m[5]}:${m[6]}.${m[7]}Z`);
+}
+
+function formatDate(d) {
+  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+}
+
+function formatTime(d) {
+  return `${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`;
+}
+
+function formatDuration(ms) {
+  if (!ms) return '0.0s';
+  if (ms < 60000) return (ms / 1000).toFixed(1) + 's';
+  const m = Math.floor(ms / 60000);
+  const s = Math.floor((ms % 60000) / 1000);
+  return `${m}m${s}s`;
+}
+
+function formatSize(bytes) {
+  if (bytes < 1024) return bytes + ' B';
+  if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
+  return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
+}
+
+function getTopEmotion(emotions) {
+  let top = 'neutral', max = 0;
+  for (const [k, v] of Object.entries(emotions)) {
+    if (v > max) { max = v; top = k; }
+  }
+  return top;
+}
+</script>
+</body>
+</html>

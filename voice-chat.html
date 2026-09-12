@@ -1,0 +1,833 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>P2P音声チャット</title>
+    <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        body {
+            font-family: 'Segoe UI', -apple-system, BlinkMacSystemFont, sans-serif;
+            background: #0a0a0f;
+            min-height: 100vh;
+            color: #fff;
+        }
+
+        .container {
+            max-width: 600px;
+            margin: 0 auto;
+            padding: 30px 20px;
+        }
+
+        .header {
+            text-align: center;
+            margin-bottom: 30px;
+            padding-bottom: 20px;
+            border-bottom: 1px solid #1a2a1a;
+        }
+
+        .header h1 {
+            font-size: 1.8rem;
+            font-weight: 700;
+            background: linear-gradient(135deg, #fff 0%, #aaa 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            margin-bottom: 6px;
+        }
+
+        .header .subtitle {
+            color: #666;
+            font-size: 0.9rem;
+        }
+
+        /* Status bar */
+        .status-bar {
+            background: #111815;
+            border: 1px solid #1a2a1a;
+            border-radius: 10px;
+            padding: 12px 18px;
+            margin-bottom: 20px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            font-size: 0.9rem;
+        }
+
+        .status-dot {
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            background: #555;
+            flex-shrink: 0;
+        }
+
+        .status-dot.connected { background: #76b900; }
+        .status-dot.connecting { background: #f0a000; animation: pulse 1s infinite; }
+        .status-dot.error { background: #e03030; }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.4; }
+        }
+
+        .status-text { color: #aaa; }
+
+        /* Join section */
+        .join-section {
+            background: #111815;
+            border: 1px solid #1a2a1a;
+            border-radius: 12px;
+            padding: 24px;
+            margin-bottom: 20px;
+        }
+
+        .join-section label {
+            display: block;
+            font-size: 0.85rem;
+            color: #888;
+            margin-bottom: 6px;
+        }
+
+        .input-row {
+            display: flex;
+            gap: 8px;
+            margin-bottom: 14px;
+        }
+
+        .input-row input {
+            flex: 1;
+            background: #0a0a0f;
+            border: 1px solid #2a3a2a;
+            border-radius: 8px;
+            padding: 10px 14px;
+            color: #fff;
+            font-size: 0.95rem;
+            outline: none;
+            transition: border-color 0.2s;
+        }
+
+        .input-row input:focus {
+            border-color: #76b900;
+        }
+
+        .preset-btns {
+            display: flex;
+            gap: 8px;
+            margin-bottom: 16px;
+            flex-wrap: wrap;
+        }
+
+        .preset-btn {
+            background: #1a2a1a;
+            border: 1px solid #2a3a2a;
+            color: #aaa;
+            padding: 6px 14px;
+            border-radius: 16px;
+            font-size: 0.82rem;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .preset-btn:hover {
+            background: #2a3a2a;
+            color: #fff;
+            border-color: #76b900;
+        }
+
+        .btn {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            padding: 12px 28px;
+            border: none;
+            border-radius: 10px;
+            font-size: 0.95rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s;
+            width: 100%;
+        }
+
+        .btn-join {
+            background: linear-gradient(135deg, #76b900 0%, #5a8f00 100%);
+            color: #fff;
+        }
+
+        .btn-join:hover { filter: brightness(1.1); }
+        .btn-join:disabled { opacity: 0.4; cursor: not-allowed; }
+
+        /* In-room section */
+        .room-section {
+            display: none;
+        }
+
+        .room-section.active {
+            display: block;
+        }
+
+        .room-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 16px;
+        }
+
+        .room-name {
+            font-size: 1.1rem;
+            font-weight: 600;
+            color: #76b900;
+        }
+
+        .room-controls {
+            display: flex;
+            gap: 10px;
+        }
+
+        .btn-control {
+            width: 48px;
+            height: 48px;
+            border-radius: 50%;
+            border: none;
+            cursor: pointer;
+            font-size: 1.4rem;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.2s;
+        }
+
+        .btn-mute {
+            background: #1a2a1a;
+            color: #76b900;
+            border: 2px solid #2a3a2a;
+        }
+
+        .btn-mute:hover { background: #2a3a2a; }
+
+        .btn-mute.muted {
+            background: #3a1a1a;
+            color: #e03030;
+            border-color: #5a2a2a;
+        }
+
+        .btn-leave {
+            background: #3a1a1a;
+            color: #e03030;
+            border: 2px solid #5a2a2a;
+        }
+
+        .btn-leave:hover { background: #5a2a2a; }
+
+        /* Participants */
+        .participants {
+            background: #111815;
+            border: 1px solid #1a2a1a;
+            border-radius: 12px;
+            padding: 16px;
+        }
+
+        .participants-title {
+            font-size: 0.85rem;
+            color: #888;
+            margin-bottom: 12px;
+        }
+
+        .participant {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding: 10px 0;
+            border-bottom: 1px solid #1a2a1a;
+        }
+
+        .participant:last-child { border-bottom: none; }
+
+        .participant-avatar {
+            width: 36px;
+            height: 36px;
+            border-radius: 50%;
+            background: #1a2a1a;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 0.9rem;
+            font-weight: 600;
+            color: #76b900;
+            flex-shrink: 0;
+        }
+
+        .participant-info {
+            flex: 1;
+        }
+
+        .participant-name {
+            font-size: 0.95rem;
+            font-weight: 500;
+        }
+
+        .participant-name .you-tag {
+            font-size: 0.75rem;
+            color: #76b900;
+            margin-left: 6px;
+        }
+
+        .participant-status {
+            font-size: 0.78rem;
+            color: #666;
+        }
+
+        .connection-indicator {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            flex-shrink: 0;
+        }
+
+        .connection-indicator.connected { background: #76b900; }
+        .connection-indicator.connecting { background: #f0a000; animation: pulse 1s infinite; }
+        .connection-indicator.failed { background: #e03030; }
+        .connection-indicator.listener { background: #4488cc; }
+
+        .empty-room {
+            text-align: center;
+            color: #555;
+            padding: 30px 0;
+            font-size: 0.9rem;
+        }
+
+        /* Back link */
+        .back-link {
+            display: inline-block;
+            color: #666;
+            text-decoration: none;
+            font-size: 0.85rem;
+            margin-top: 20px;
+            transition: color 0.2s;
+        }
+        .back-link:hover { color: #76b900; }
+    </style>
+</head>
+<body>
+<div class="container">
+    <div class="header">
+        <h1>P2P 音声チャット</h1>
+        <div class="subtitle">WebRTC による低遅延音声通信</div>
+    </div>
+
+    <div class="status-bar">
+        <div class="status-dot" id="statusDot"></div>
+        <span class="status-text" id="statusText">初期化中...</span>
+    </div>
+
+    <!-- Join section -->
+    <div class="join-section" id="joinSection">
+        <label>表示名</label>
+        <div class="input-row">
+            <input type="text" id="nameInput" placeholder="名前を入力" maxlength="20">
+        </div>
+
+        <label>ルーム名</label>
+        <div class="input-row">
+            <input type="text" id="roomInput" placeholder="ルーム名を入力" maxlength="30">
+        </div>
+
+        <div class="preset-btns">
+            <button class="preset-btn" data-room="classroom">教室</button>
+            <button class="preset-btn" data-room="meeting">会議室</button>
+            <button class="preset-btn" data-room="lobby">ロビー</button>
+        </div>
+
+        <button class="btn btn-join" id="joinBtn" disabled>参加する</button>
+    </div>
+
+    <!-- In-room section -->
+    <div class="room-section" id="roomSection">
+        <div class="room-header">
+            <div class="room-name" id="roomLabel"></div>
+            <div class="room-controls">
+                <button class="btn-control btn-mute" id="muteBtn" title="ミュート切替">&#x1F3A4;</button>
+                <button class="btn-control btn-leave" id="leaveBtn" title="退出">&#x1F6AA;</button>
+            </div>
+        </div>
+
+        <div class="participants" id="participantsList">
+            <div class="participants-title">参加者</div>
+            <div class="empty-room" id="emptyMsg">他の参加者を待っています...</div>
+        </div>
+    </div>
+
+    <a href="/fujii/" class="back-link">&larr; Fujiiに戻る</a>
+</div>
+
+<script>
+(function() {
+    'use strict';
+
+    // --- Config ---
+    const ICE_SERVERS = [
+        { urls: 'stun:stun.l.google.com:19302' },
+        { urls: 'stun:stun1.l.google.com:19302' }
+    ];
+    const MAX_RECONNECT = 3;
+
+    // --- DOM ---
+    const statusDot = document.getElementById('statusDot');
+    const statusText = document.getElementById('statusText');
+    const joinSection = document.getElementById('joinSection');
+    const roomSection = document.getElementById('roomSection');
+    const nameInput = document.getElementById('nameInput');
+    const roomInput = document.getElementById('roomInput');
+    const joinBtn = document.getElementById('joinBtn');
+    const muteBtn = document.getElementById('muteBtn');
+    const leaveBtn = document.getElementById('leaveBtn');
+    const roomLabel = document.getElementById('roomLabel');
+    const participantsList = document.getElementById('participantsList');
+    const emptyMsg = document.getElementById('emptyMsg');
+
+    // --- State ---
+    let socket = null;
+    let localStream = null;
+    let isMuted = false;
+    let isListenerMode = false;
+    let currentRoom = null;
+    const peers = {};          // { peerId: { pc, reconnectCount, name, state } }
+    const iceCandidateBuffers = {}; // { peerId: [candidates] }
+
+    // --- Status helpers ---
+    function setStatus(text, state) {
+        statusText.textContent = text;
+        statusDot.className = 'status-dot ' + (state || '');
+    }
+
+    // --- Socket.IO ---
+    function connectSocket() {
+        const protocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
+        socket = io({
+            path: '/voice-signaling/',
+            transports: ['websocket', 'polling']
+        });
+
+        socket.on('connect', () => {
+            setStatus('サーバーに接続しました', 'connected');
+            joinBtn.disabled = false;
+        });
+
+        socket.on('disconnect', () => {
+            setStatus('切断されました', 'error');
+            joinBtn.disabled = true;
+        });
+
+        socket.on('connect_error', () => {
+            setStatus('接続エラー', 'error');
+        });
+
+        // --- Signaling events ---
+        socket.on('room-users', (users) => {
+            console.log('[Voice] room-users:', users);
+            // Send offers to each existing user
+            users.forEach(user => {
+                if (user.id !== socket.id) {
+                    createPeerConnection(user.id, user.name, true);
+                }
+            });
+        });
+
+        socket.on('user-joined', (user) => {
+            console.log('[Voice] user-joined:', user.name);
+            // The joiner will send us an offer; we wait for it
+            setStatus(user.name + ' が参加しました', 'connected');
+        });
+
+        socket.on('user-left', (user) => {
+            console.log('[Voice] user-left:', user.name);
+            removePeer(user.id);
+            setStatus(user.name + ' が退出しました', 'connected');
+            renderParticipants();
+        });
+
+        socket.on('offer', async ({ from, offer }) => {
+            console.log('[Voice] offer from:', from);
+            await handleOffer(from, offer);
+        });
+
+        socket.on('answer', async ({ from, answer }) => {
+            console.log('[Voice] answer from:', from);
+            await handleAnswer(from, answer);
+        });
+
+        socket.on('ice-candidate', async ({ from, candidate }) => {
+            await handleIceCandidate(from, candidate);
+        });
+    }
+
+    // --- WebRTC ---
+    async function getLocalStream() {
+        try {
+            if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+                throw new Error('mediaDevices not available');
+            }
+            const mediaPromise = navigator.mediaDevices.getUserMedia({
+                audio: {
+                    echoCancellation: true,
+                    noiseSuppression: true,
+                    autoGainControl: true
+                },
+                video: false
+            });
+            // Timeout after 5 seconds to avoid hanging in headless/restricted environments
+            const timeoutPromise = new Promise((_, reject) =>
+                setTimeout(() => reject(new Error('getUserMedia timeout')), 5000)
+            );
+            localStream = await Promise.race([mediaPromise, timeoutPromise]);
+            isListenerMode = false;
+            console.log('[Voice] マイク取得成功');
+        } catch (err) {
+            console.warn('[Voice] マイク拒否 - リスナーモードで参加:', err.message);
+            localStream = null;
+            isListenerMode = true;
+        }
+    }
+
+    function createPeerConnection(peerId, peerName, isInitiator) {
+        if (peers[peerId]) return;
+
+        const pc = new RTCPeerConnection({ iceServers: ICE_SERVERS });
+        peers[peerId] = { pc, reconnectCount: 0, name: peerName || peerId, state: 'connecting' };
+        iceCandidateBuffers[peerId] = [];
+
+        // Add local tracks
+        if (localStream) {
+            localStream.getTracks().forEach(track => {
+                pc.addTrack(track, localStream);
+            });
+        }
+
+        // Remote audio
+        pc.ontrack = (event) => {
+            const audio = document.createElement('audio');
+            audio.srcObject = event.streams[0];
+            audio.autoplay = true;
+            audio.id = 'audio-' + peerId;
+            document.body.appendChild(audio);
+        };
+
+        // ICE candidates
+        pc.onicecandidate = (event) => {
+            if (event.candidate) {
+                socket.emit('ice-candidate', {
+                    to: peerId,
+                    candidate: event.candidate
+                });
+            }
+        };
+
+        // Connection state
+        pc.onconnectionstatechange = () => {
+            const state = pc.connectionState;
+            console.log(`[Voice] Peer ${peerName} connection: ${state}`);
+            if (peers[peerId]) {
+                peers[peerId].state = state;
+            }
+            if (state === 'connected') {
+                setStatus('通話中 - ' + getRoomUserCount() + '人', 'connected');
+            }
+            if (state === 'failed') {
+                handleConnectionFailed(peerId, peerName);
+            }
+            renderParticipants();
+        };
+
+        pc.oniceconnectionstatechange = () => {
+            console.log(`[Voice] Peer ${peerName} ICE: ${pc.iceConnectionState}`);
+        };
+
+        if (isInitiator) {
+            startOffer(peerId, pc);
+        }
+
+        renderParticipants();
+    }
+
+    async function startOffer(peerId, pc) {
+        try {
+            const offer = await pc.createOffer();
+            await pc.setLocalDescription(offer);
+            socket.emit('offer', { to: peerId, offer });
+        } catch (err) {
+            console.error('[Voice] offer error:', err);
+        }
+    }
+
+    async function handleOffer(from, offer) {
+        const peerName = offer._peerName || from;
+        if (!peers[from]) {
+            createPeerConnection(from, peerName, false);
+        }
+        const pc = peers[from].pc;
+        try {
+            await pc.setRemoteDescription(new RTCSessionDescription(offer));
+            // Flush buffered ICE candidates
+            flushIceCandidates(from);
+            const answer = await pc.createAnswer();
+            await pc.setLocalDescription(answer);
+            socket.emit('answer', { to: from, answer });
+        } catch (err) {
+            console.error('[Voice] handleOffer error:', err);
+        }
+    }
+
+    async function handleAnswer(from, answer) {
+        if (!peers[from]) return;
+        try {
+            await peers[from].pc.setRemoteDescription(new RTCSessionDescription(answer));
+            flushIceCandidates(from);
+        } catch (err) {
+            console.error('[Voice] handleAnswer error:', err);
+        }
+    }
+
+    async function handleIceCandidate(from, candidate) {
+        if (!peers[from]) {
+            // Buffer if peer not ready yet
+            if (!iceCandidateBuffers[from]) iceCandidateBuffers[from] = [];
+            iceCandidateBuffers[from].push(candidate);
+            return;
+        }
+        const pc = peers[from].pc;
+        if (pc.remoteDescription) {
+            try {
+                await pc.addIceCandidate(new RTCIceCandidate(candidate));
+            } catch (err) {
+                console.warn('[Voice] addIceCandidate error:', err);
+            }
+        } else {
+            if (!iceCandidateBuffers[from]) iceCandidateBuffers[from] = [];
+            iceCandidateBuffers[from].push(candidate);
+        }
+    }
+
+    function flushIceCandidates(peerId) {
+        const buf = iceCandidateBuffers[peerId];
+        if (!buf || !buf.length) return;
+        const pc = peers[peerId]?.pc;
+        if (!pc || !pc.remoteDescription) return;
+        buf.forEach(candidate => {
+            pc.addIceCandidate(new RTCIceCandidate(candidate)).catch(() => {});
+        });
+        iceCandidateBuffers[peerId] = [];
+    }
+
+    function handleConnectionFailed(peerId, peerName) {
+        if (!peers[peerId]) return;
+        const peer = peers[peerId];
+        if (peer.reconnectCount < MAX_RECONNECT) {
+            peer.reconnectCount++;
+            console.log(`[Voice] 再接続試行 ${peer.reconnectCount}/${MAX_RECONNECT}: ${peerName}`);
+            setStatus(`${peerName} に再接続中... (${peer.reconnectCount}/${MAX_RECONNECT})`, 'connecting');
+            // Close old connection and create new
+            peer.pc.close();
+            const audioEl = document.getElementById('audio-' + peerId);
+            if (audioEl) audioEl.remove();
+            delete peers[peerId];
+            iceCandidateBuffers[peerId] = [];
+            createPeerConnection(peerId, peerName, true);
+        } else {
+            console.error(`[Voice] 再接続失敗: ${peerName}`);
+            setStatus(`${peerName} との接続に失敗しました`, 'error');
+        }
+    }
+
+    function removePeer(peerId) {
+        if (peers[peerId]) {
+            peers[peerId].pc.close();
+            delete peers[peerId];
+        }
+        delete iceCandidateBuffers[peerId];
+        const audioEl = document.getElementById('audio-' + peerId);
+        if (audioEl) audioEl.remove();
+    }
+
+    function removeAllPeers() {
+        Object.keys(peers).forEach(removePeer);
+    }
+
+    function getRoomUserCount() {
+        return Object.keys(peers).length + 1; // +1 for self
+    }
+
+    // --- UI rendering ---
+    function renderParticipants() {
+        // Keep title
+        const titleEl = participantsList.querySelector('.participants-title');
+        participantsList.innerHTML = '';
+        participantsList.appendChild(titleEl);
+
+        // Self
+        const selfEl = createParticipantEl(
+            nameInput.value || '自分',
+            isListenerMode ? 'listener' : 'connected',
+            true,
+            isListenerMode ? 'リスナーモード' : (isMuted ? 'ミュート中' : '通話中')
+        );
+        participantsList.appendChild(selfEl);
+
+        const peerIds = Object.keys(peers);
+        if (peerIds.length === 0) {
+            participantsList.appendChild(emptyMsg);
+            emptyMsg.style.display = 'block';
+        } else {
+            emptyMsg.style.display = 'none';
+            peerIds.forEach(id => {
+                const p = peers[id];
+                let stateLabel = '接続中...';
+                let indicatorClass = 'connecting';
+                if (p.state === 'connected') { stateLabel = '通話中'; indicatorClass = 'connected'; }
+                else if (p.state === 'failed') { stateLabel = '接続失敗'; indicatorClass = 'failed'; }
+
+                const el = createParticipantEl(p.name, indicatorClass, false, stateLabel);
+                participantsList.appendChild(el);
+            });
+        }
+    }
+
+    function createParticipantEl(name, indicatorClass, isSelf, statusLabel) {
+        const div = document.createElement('div');
+        div.className = 'participant';
+
+        const avatar = document.createElement('div');
+        avatar.className = 'participant-avatar';
+        avatar.textContent = name.charAt(0).toUpperCase();
+
+        const info = document.createElement('div');
+        info.className = 'participant-info';
+
+        const nameEl = document.createElement('div');
+        nameEl.className = 'participant-name';
+        nameEl.textContent = name;
+        if (isSelf) {
+            const tag = document.createElement('span');
+            tag.className = 'you-tag';
+            tag.textContent = '(あなた)';
+            nameEl.appendChild(tag);
+        }
+
+        const statusEl = document.createElement('div');
+        statusEl.className = 'participant-status';
+        statusEl.textContent = statusLabel;
+
+        info.appendChild(nameEl);
+        info.appendChild(statusEl);
+
+        const indicator = document.createElement('div');
+        indicator.className = 'connection-indicator ' + indicatorClass;
+
+        div.appendChild(avatar);
+        div.appendChild(info);
+        div.appendChild(indicator);
+        return div;
+    }
+
+    // --- Actions ---
+    async function joinRoom() {
+        const name = nameInput.value.trim();
+        const room = roomInput.value.trim();
+        if (!name || !room) return;
+
+        joinBtn.disabled = true;
+        setStatus('マイクを確認中...', 'connecting');
+        await getLocalStream();
+
+        setStatus('ルームに参加中...', 'connecting');
+        currentRoom = room;
+        socket.emit('join-room', { room, name });
+
+        joinSection.style.display = 'none';
+        roomSection.classList.add('active');
+        roomLabel.textContent = currentRoom;
+        renderParticipants();
+        setStatus('ルーム「' + room + '」に参加しました', 'connected');
+    }
+
+    function leaveRoom() {
+        if (socket && currentRoom) {
+            socket.emit('leave-room');
+        }
+        removeAllPeers();
+        if (localStream) {
+            localStream.getTracks().forEach(t => t.stop());
+            localStream = null;
+        }
+        currentRoom = null;
+        isMuted = false;
+        isListenerMode = false;
+        muteBtn.classList.remove('muted');
+        muteBtn.innerHTML = '&#x1F3A4;';
+
+        roomSection.classList.remove('active');
+        joinSection.style.display = 'block';
+        joinBtn.disabled = false;
+        setStatus('サーバーに接続しました', 'connected');
+    }
+
+    function toggleMute() {
+        if (!localStream) return;
+        isMuted = !isMuted;
+        localStream.getAudioTracks().forEach(t => {
+            t.enabled = !isMuted;
+        });
+        muteBtn.classList.toggle('muted', isMuted);
+        muteBtn.innerHTML = isMuted ? '&#x1F507;' : '&#x1F3A4;';
+        renderParticipants();
+    }
+
+    // --- Event bindings ---
+    function validateInputs() {
+        const hasName = nameInput.value.trim().length > 0;
+        const hasRoom = roomInput.value.trim().length > 0;
+        joinBtn.disabled = !(hasName && hasRoom && socket && socket.connected);
+    }
+
+    nameInput.addEventListener('input', validateInputs);
+    roomInput.addEventListener('input', validateInputs);
+
+    document.querySelectorAll('.preset-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+            roomInput.value = btn.dataset.room;
+            validateInputs();
+        });
+    });
+
+    joinBtn.addEventListener('click', joinRoom);
+    muteBtn.addEventListener('click', toggleMute);
+    leaveBtn.addEventListener('click', leaveRoom);
+
+    // Enter key to join
+    roomInput.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' && !joinBtn.disabled) joinRoom();
+    });
+    nameInput.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') roomInput.focus();
+    });
+
+    // --- Cleanup on page leave ---
+    window.addEventListener('beforeunload', () => {
+        removeAllPeers();
+        if (localStream) {
+            localStream.getTracks().forEach(t => t.stop());
+        }
+        if (socket) {
+            socket.emit('leave-room');
+            socket.close();
+        }
+    });
+
+    // --- Init ---
+    connectSocket();
+})();
+</script>
+</body>
+</html>

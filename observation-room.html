@@ -1,0 +1,2933 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <title>Observation Room</title>
+    <meta name="description" content="3-person observation room for classroom interaction analysis" />
+
+    <!-- A-Frame -->
+    <script src="https://aframe.io/releases/1.6.0/aframe.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/gh/c-frame/aframe-extras@7.5.0/dist/aframe-extras.controls.min.js"></script>
+    <!-- MediaPipe FaceMesh -->
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/face_mesh.js" crossorigin="anonymous"></script>
+    <!-- Socket.IO v4 -->
+    <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
+
+    <style>
+      * { margin: 0; padding: 0; box-sizing: border-box; }
+      body { font-family: 'Segoe UI', 'Hiragino Sans', sans-serif; overflow: hidden; }
+
+      /* ========== Lobby ========== */
+      #lobby {
+        position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+        background: linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%);
+        z-index: 9000; display: flex; align-items: center; justify-content: center;
+        color: #fff;
+      }
+      #lobby-box {
+        background: rgba(255,255,255,0.08); border-radius: 16px; padding: 40px;
+        backdrop-filter: blur(10px); text-align: center; min-width: 400px;
+      }
+      #lobby-box h1 { font-size: 28px; margin-bottom: 8px; }
+      #lobby-box p { color: #aaa; margin-bottom: 24px; }
+      #name-input {
+        width: 100%; padding: 12px 16px; border-radius: 8px; border: 1px solid #444;
+        background: rgba(255,255,255,0.1); color: #fff; font-size: 16px; margin-bottom: 20px;
+        outline: none;
+      }
+      #name-input::placeholder { color: #888; }
+      .role-buttons { display: flex; gap: 12px; justify-content: center; }
+      .role-btn {
+        flex: 1; padding: 16px 12px; border-radius: 12px; border: 2px solid;
+        cursor: pointer; font-size: 15px; font-weight: bold; transition: all 0.2s;
+        background: transparent; color: #fff;
+      }
+      .role-btn:hover:not(:disabled) { transform: translateY(-2px); }
+      .role-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+      .role-btn.lecturer { border-color: #42a5f5; }
+      .role-btn.lecturer:hover:not(:disabled) { background: rgba(66,165,245,0.2); }
+      .role-btn.student { border-color: #66bb6a; }
+      .role-btn.student:hover:not(:disabled) { background: rgba(102,187,106,0.2); }
+      .role-btn.observer { border-color: #ab47bc; }
+      .role-btn.observer:hover:not(:disabled) { background: rgba(171,71,188,0.2); }
+      .role-status { font-size: 11px; color: #aaa; margin-top: 6px; display: block; }
+      .role-status.occupied { color: #ef5350; }
+      .force-leave-btn {
+        display: none; font-size: 10px; margin-top: 4px; padding: 3px 8px;
+        background: rgba(239,83,80,0.3); color: #ef5350; border: 1px solid #ef5350;
+        border-radius: 4px; cursor: pointer; transition: all 0.2s;
+      }
+      .force-leave-btn:hover { background: rgba(239,83,80,0.6); color: #fff; }
+      #join-error {
+        color: #ef5350; margin-top: 12px; font-size: 14px; min-height: 20px;
+      }
+
+      /* ========== HUD ========== */
+      #hud-role {
+        position: fixed; top: 12px; left: 12px; z-index: 200;
+        background: rgba(0,0,0,0.6); color: #fff; padding: 8px 16px; border-radius: 8px;
+        font-size: 14px; display: none;
+      }
+      #leave-btn {
+        position: fixed; top: 12px; right: 12px; z-index: 300;
+        background: rgba(239,83,80,0.8); color: #fff; border: none; border-radius: 8px;
+        padding: 8px 16px; cursor: pointer; font-size: 13px; display: none;
+      }
+
+      /* ========== Device Settings ========== */
+      #device-settings-btn {
+        position: fixed; top: 44px; left: 12px; z-index: 200;
+        background: rgba(0,0,0,0.6); color: #fff; border: 1px solid #555;
+        border-radius: 8px; padding: 6px 12px; cursor: pointer; font-size: 12px;
+        display: none;
+      }
+      #device-settings-btn:hover { background: rgba(255,255,255,0.15); }
+      #device-panel {
+        position: fixed; top: 72px; left: 12px; z-index: 250;
+        background: rgba(20,20,40,0.95); backdrop-filter: blur(8px);
+        border-radius: 10px; padding: 16px; color: #fff; display: none;
+        min-width: 280px; border: 1px solid #444;
+      }
+      #device-panel h3 { font-size: 13px; color: #aaa; margin: 0 0 8px; }
+      #device-panel label { font-size: 12px; color: #ccc; display: block; margin: 8px 0 4px; }
+      #device-panel select {
+        width: 100%; padding: 6px 8px; border-radius: 6px; border: 1px solid #555;
+        background: rgba(255,255,255,0.1); color: #fff; font-size: 12px;
+        outline: none; cursor: pointer;
+      }
+      #device-panel select option { background: #1a1a2e; color: #fff; }
+
+      /* ========== Student: Calibration Button ========== */
+      #start-calibration {
+        position: fixed; top: 56px; right: 12px; padding: 10px 16px;
+        background-color: #ff9800; color: white; border: none; border-radius: 5px;
+        cursor: pointer; z-index: 200; font-size: 14px; font-weight: bold; display: none;
+      }
+
+      /* ========== Student: Hidden video / canvas ========== */
+      #face-video-mediapipe {
+        position: fixed; bottom: 8px; left: 8px; width: 160px; height: 120px;
+        z-index: 150; border-radius: 8px; display: none;
+      }
+
+      /* ========== Calibration Overlay ========== */
+      #calibration-overlay {
+        position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+        background: rgba(0,0,0,0.85); z-index: 10000; display: none; cursor: default;
+      }
+      #calib-instruction {
+        position: absolute; top: 50%; left: 50%; transform: translate(-50%,-50%);
+        color: white; font-size: 24px; text-align: center; line-height: 1.6;
+      }
+      #calib-progress {
+        position: absolute; top: 16px; left: 50%; transform: translateX(-50%);
+        color: white; font-size: 20px; font-weight: bold;
+      }
+      .calib-point {
+        position: absolute; width: 44px; height: 44px; border-radius: 50%;
+        background: rgba(255,60,60,0.9); transform: translate(-50%,-50%);
+        cursor: pointer; display: none;
+        box-shadow: 0 0 16px rgba(255,60,60,0.6);
+        animation: calib-pulse 1s ease-in-out infinite;
+      }
+      .calib-point::after {
+        content: ''; position: absolute; top: 50%; left: 50%;
+        width: 6px; height: 6px; border-radius: 50%; background: white;
+        transform: translate(-50%,-50%);
+      }
+      .calib-point.collecting {
+        background: rgba(76,175,80,0.9);
+        box-shadow: 0 0 16px rgba(76,175,80,0.7); animation: none;
+      }
+      @keyframes calib-pulse {
+        0%,100% { transform: translate(-50%,-50%) scale(1); }
+        50% { transform: translate(-50%,-50%) scale(1.2); }
+      }
+      #calib-sample-count {
+        position: absolute; bottom: 80px; left: 50%; transform: translateX(-50%);
+        color: #90caf9; font-size: 18px; font-weight: bold; display: none;
+      }
+      #calib-face-warning {
+        position: absolute; bottom: 40px; left: 50%; transform: translateX(-50%);
+        color: #ff5252; font-size: 16px; font-weight: bold; display: none;
+      }
+
+      /* ========== Observer Panel ========== */
+      #observer-panel {
+        position: fixed; right: 0; top: 0; width: 320px; height: 100%;
+        background: rgba(20,10,40,0.85); backdrop-filter: blur(8px);
+        z-index: 200; padding: 16px; color: #fff; overflow-y: auto;
+        display: none; border-left: 2px solid rgba(171,71,188,0.4);
+      }
+      #observer-panel h2 { font-size: 18px; margin-bottom: 16px; color: #ce93d8; }
+      .obs-section {
+        background: rgba(255,255,255,0.06); border-radius: 10px; padding: 14px;
+        margin-bottom: 12px;
+      }
+      .obs-section h3 { font-size: 13px; color: #aaa; margin-bottom: 8px; text-transform: uppercase; }
+      #obs-emotion { font-size: 36px; text-align: center; margin: 8px 0; }
+      #obs-emotion-label { text-align: center; font-size: 14px; color: #ccc; }
+      #obs-nod-count { font-size: 48px; font-weight: bold; text-align: center; color: #66bb6a; }
+      #obs-nod-label { text-align: center; font-size: 13px; color: #aaa; }
+      #gaze-minimap {
+        width: 100%; height: 120px; background: rgba(0,0,0,0.4); border-radius: 8px;
+        position: relative; overflow: hidden;
+      }
+      #gaze-dot {
+        width: 10px; height: 10px; border-radius: 50%; background: #f44336;
+        position: absolute; top: 50%; left: 50%; transform: translate(-50%,-50%);
+        box-shadow: 0 0 8px rgba(244,67,54,0.6);
+      }
+      /* speech state per role - inline styles used */
+
+      /* Multimodal signal table */
+      #signal-table { width: 100%; font-size: 11px; border-collapse: collapse; color: #ddd; }
+      #signal-table th, #signal-table td {
+        padding: 3px 5px; text-align: left; border-bottom: 1px solid rgba(255,255,255,0.05);
+      }
+      #signal-table th { color: #888; font-weight: normal; font-size: 10px; text-transform: uppercase; }
+      #signal-table td.sig-dir { text-align: center; width: 22px; font-weight: bold; }
+      #signal-table td.sig-dir.dir-pos { color: #66bb6a; }
+      #signal-table td.sig-dir.dir-neg { color: #ef5350; }
+      #signal-table td.sig-dir.dir-ctx { color: #ffb74d; }
+      #signal-table td.sig-state {
+        text-align: center; width: 70px; font-weight: bold;
+        border-radius: 4px; transition: background 0.25s, color 0.25s;
+      }
+      #signal-table td.sig-state.state-pos { color: #66bb6a; background: rgba(102,187,106,0.18); }
+      #signal-table td.sig-state.state-neg { color: #ef5350; background: rgba(239,83,80,0.18); }
+      #signal-table td.sig-state.state-warn { color: #ffb74d; background: rgba(255,183,77,0.15); }
+      #signal-table td.sig-state.state-idle { color: #666; }
+      #signal-table td.sig-state.state-manual { color: #888; font-style: italic; font-size: 10px; }
+      #signal-table tr.signal-fire td.sig-state { box-shadow: 0 0 6px rgba(255,255,255,0.4); }
+      #signal-live-dot {
+        color: #66bb6a; font-size: 10px; margin-left: 4px;
+        animation: signal-pulse 1.6s ease-in-out infinite;
+      }
+      @keyframes signal-pulse {
+        0%, 100% { opacity: 0.3; } 50% { opacity: 1; }
+      }
+
+      /* Recording */
+      .rec-controls { display: flex; gap: 8px; margin-top: 8px; }
+      #rec-start-btn {
+        flex: 1; padding: 10px; border: none; border-radius: 8px;
+        background: #43a047; color: #fff; font-weight: bold; cursor: pointer; font-size: 14px;
+      }
+      #rec-start-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+      #rec-stop-btn {
+        flex: 1; padding: 10px; border: none; border-radius: 8px;
+        background: #e53935; color: #fff; font-weight: bold; cursor: pointer; font-size: 14px;
+      }
+      #rec-stop-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+      #rec-timer { text-align: center; font-size: 20px; font-weight: bold; margin: 8px 0; color: #ef5350; }
+      #rec-result { font-size: 13px; color: #81c784; margin-top: 8px; min-height: 18px; }
+
+      /* ========== Participants ========== */
+      #participants-hud {
+        position: fixed; bottom: 12px; left: 12px; z-index: 200;
+        background: rgba(0,0,0,0.5); border-radius: 8px; padding: 8px 12px;
+        color: #fff; font-size: 12px; display: none;
+      }
+      .participant-row { display: flex; align-items: center; gap: 6px; margin: 2px 0; }
+      .participant-dot { width: 8px; height: 8px; border-radius: 50%; }
+
+      /* ========== Comprehension HUD (lecturer only) ========== */
+      #comp-bubble {
+        position: fixed; top: 100px; right: 16px; z-index: 400;
+        min-width: 280px; max-width: 380px;
+        background: rgba(20,20,40,0.95); backdrop-filter: blur(8px);
+        border-radius: 14px; padding: 14px 16px; color: #fff;
+        border: 2px solid #444; display: none;
+        box-shadow: 0 8px 28px rgba(0,0,0,0.5);
+        transition: border-color 0.3s, box-shadow 0.3s;
+      }
+      #comp-bubble.urgent { animation: comp-urgent-pulse 1.4s ease-in-out infinite; }
+      @keyframes comp-urgent-pulse {
+        0%,100% { box-shadow: 0 8px 28px rgba(0,0,0,0.5), 0 0 0 0 rgba(220,38,38,0.7); }
+        50%     { box-shadow: 0 8px 28px rgba(0,0,0,0.5), 0 0 0 12px rgba(220,38,38,0); }
+      }
+      #comp-bubble-text { font-size: 22px; font-weight: bold; margin-bottom: 4px; }
+      #comp-bubble-label { font-size: 13px; color: #ddd; margin-bottom: 10px; min-height: 16px; }
+      #comp-bubble-meta {
+        font-size: 11px; color: #aaa; margin-bottom: 10px;
+        display: flex; justify-content: space-between;
+      }
+      #comp-bubble-axes {
+        font-size: 11px; color: #aaa; margin-bottom: 10px;
+        font-family: 'Menlo','Consolas',monospace; letter-spacing: 0.5px;
+      }
+      .comp-actions { display: flex; gap: 8px; }
+      .comp-btn {
+        flex: 1; padding: 8px 10px; border: none; border-radius: 6px;
+        cursor: pointer; font-size: 12px; font-weight: bold;
+      }
+      .comp-btn-ack { background: #1e88e5; color: #fff; }
+      .comp-btn-ack:hover { background: #1565c0; }
+      .comp-btn-dismiss { background: rgba(255,255,255,0.1); color: #ccc; }
+      .comp-btn-dismiss:hover { background: rgba(239,83,80,0.3); color: #fff; }
+
+      /* Debug panel - 納得度 + 7下位状態を常時表示 */
+      #comp-debug {
+        position: fixed; bottom: 12px; right: 12px; z-index: 200;
+        background: rgba(0,0,0,0.72); color: #ccc; padding: 10px 14px;
+        border-radius: 8px; font-size: 11px;
+        font-family: 'Menlo','Consolas',monospace; display: none;
+        min-width: 220px;
+      }
+      #comp-debug .row { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin: 2px 0; }
+      .comp-bar {
+        display: inline-block; width: 80px; height: 6px; background: #333;
+        border-radius: 3px; overflow: hidden; vertical-align: middle; margin-left: 6px;
+      }
+      .comp-bar-fill { height: 100%; transition: width 0.3s, background 0.3s; }
+    </style>
+  </head>
+  <body>
+
+    <!-- Lobby -->
+    <div id="lobby">
+      <div id="lobby-box">
+        <h1>Observation Room</h1>
+        <p>3-person classroom interaction observation</p>
+        <input type="text" id="name-input" placeholder="表示名を入力..." maxlength="20" />
+        <div class="role-buttons">
+          <div style="flex:1;text-align:center;">
+            <button class="role-btn lecturer" data-role="lecturer" onclick="joinRoom('lecturer')" style="width:100%;">
+              Lecturer
+              <span class="role-status" id="status-lecturer">空き</span>
+            </button>
+            <button class="force-leave-btn" id="force-leave-lecturer" onclick="forceLeave('lecturer')">強制退出</button>
+          </div>
+          <div style="flex:1;text-align:center;">
+            <button class="role-btn student" data-role="student" onclick="joinRoom('student')" style="width:100%;">
+              Student
+              <span class="role-status" id="status-student">空き</span>
+            </button>
+            <button class="force-leave-btn" id="force-leave-student" onclick="forceLeave('student')">強制退出</button>
+          </div>
+          <div style="flex:1;text-align:center;">
+            <button class="role-btn observer" data-role="observer" onclick="joinRoom('observer')" style="width:100%;">
+              Observer
+              <span class="role-status" id="status-observer">空き</span>
+            </button>
+            <button class="force-leave-btn" id="force-leave-observer" onclick="forceLeave('observer')">強制退出</button>
+          </div>
+        </div>
+        <div id="join-error"></div>
+      </div>
+    </div>
+
+    <!-- HUD -->
+    <div id="hud-role"></div>
+    <button id="leave-btn" onclick="leaveRoom()">退出</button>
+    <button id="device-settings-btn" onclick="toggleDevicePanel()">デバイス設定</button>
+
+    <!-- Lecturer 用の小型録画コントロール (Observer 不在でも録画できるように) -->
+    <div id="lec-rec-controls" style="position:fixed;top:90px;right:12px;z-index:200;display:none;background:rgba(0,0,0,0.65);border-radius:8px;padding:8px 12px;color:#fff;font-size:12px;min-width:180px">
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
+        <span style="font-weight:bold">録画</span>
+        <span id="lec-rec-timer" style="font-family:monospace;color:#ef5350;font-weight:bold">00:00</span>
+      </div>
+      <div style="display:flex;gap:6px">
+        <button id="lec-rec-start" onclick="startRecording()" style="flex:1;padding:4px 8px;background:#ef5350;color:#fff;border:none;border-radius:4px;cursor:pointer;font-size:12px">Start</button>
+        <button id="lec-rec-stop" onclick="stopRecording()" disabled style="flex:1;padding:4px 8px;background:#666;color:#fff;border:none;border-radius:4px;cursor:pointer;font-size:12px">Stop</button>
+      </div>
+      <div id="lec-rec-result" style="font-size:11px;color:#81c784;margin-top:4px;min-height:14px"></div>
+    </div>
+
+    <!-- Comprehension bubble (lecturer only) -->
+    <div id="comp-bubble" data-bubble-id="">
+      <div id="comp-bubble-text"></div>
+      <div id="comp-bubble-label"></div>
+      <div id="comp-bubble-meta">
+        <span id="comp-bubble-student"></span>
+        <span id="comp-bubble-time"></span>
+      </div>
+      <div id="comp-bubble-axes"></div>
+      <div class="comp-actions">
+        <button class="comp-btn comp-btn-ack" onclick="ackComprehensionBubble()">対応中</button>
+        <button class="comp-btn comp-btn-dismiss" onclick="dismissComprehensionBubble()">却下</button>
+      </div>
+    </div>
+
+    <!-- Debug panel: 納得度 + 7下位状態を講師に常時表示 -->
+    <div id="comp-debug">
+      <div class="row" style="margin-bottom:6px;padding-bottom:6px;border-bottom:1px solid rgba(255,255,255,0.15)">
+        <span style="font-weight:bold;color:#fff">納得度</span>
+        <span>
+          <span id="comp-sat-val" style="font-weight:bold;font-size:13px">--</span>
+          <span class="comp-bar" style="width:100px;height:8px">
+            <span class="comp-bar-fill SAT" id="comp-sat-bar" style="width:0;background:#10b981"></span>
+          </span>
+        </span>
+      </div>
+      <div class="row"><span style="color:#22c55e">+ 理解度</span><span><span id="comp-understanding-val">--</span><span class="comp-bar"><span class="comp-bar-fill POS" id="comp-understanding-bar" style="width:0;background:#22c55e"></span></span></span></div>
+      <div class="row"><span style="color:#22c55e">+ 同意度</span><span><span id="comp-agreement-val">--</span><span class="comp-bar"><span class="comp-bar-fill POS" id="comp-agreement-bar" style="width:0;background:#22c55e"></span></span></span></div>
+      <div class="row"><span style="color:#22c55e">+ 注意度</span><span><span id="comp-attention-val">--</span><span class="comp-bar"><span class="comp-bar-fill POS" id="comp-attention-bar" style="width:0;background:#22c55e"></span></span></span></div>
+      <div class="row"><span style="color:#22c55e">+ 確信度</span><span><span id="comp-confidence-val">--</span><span class="comp-bar"><span class="comp-bar-fill POS" id="comp-confidence-bar" style="width:0;background:#22c55e"></span></span></span></div>
+      <div class="row"><span style="color:#ef4444">− 混乱度</span><span><span id="comp-confusion-val">--</span><span class="comp-bar"><span class="comp-bar-fill NEG" id="comp-confusion-bar" style="width:0;background:#ef4444"></span></span></span></div>
+      <div class="row"><span style="color:#ef4444">− 不同意度</span><span><span id="comp-disagreement-val">--</span><span class="comp-bar"><span class="comp-bar-fill NEG" id="comp-disagreement-bar" style="width:0;background:#ef4444"></span></span></span></div>
+      <div class="row"><span style="color:#ef4444">− 不確実性</span><span><span id="comp-uncertainty-val">--</span><span class="comp-bar"><span class="comp-bar-fill NEG" id="comp-uncertainty-bar" style="width:0;background:#ef4444"></span></span></span></div>
+    </div>
+    <div id="device-panel">
+      <h3>デバイス設定</h3>
+      <label for="mic-select">マイク</label>
+      <select id="mic-select" onchange="switchMicrophone()"></select>
+      <label for="speaker-select">スピーカー</label>
+      <select id="speaker-select" onchange="switchSpeaker()"></select>
+    </div>
+
+    <!-- Student only: calibration & video -->
+    <button id="start-calibration">視線キャリブレーション</button>
+    <video id="face-video-mediapipe" autoplay playsinline></video>
+
+    <!-- Calibration overlay -->
+    <div id="calibration-overlay">
+      <div id="calib-instruction"></div>
+      <div id="calib-progress"></div>
+      <div id="calib-sample-count"></div>
+      <div id="calib-face-warning">顔が検出されません。カメラに顔を向けてください。</div>
+    </div>
+
+    <!-- Observer panel -->
+    <div id="observer-panel">
+      <h2>Observation Panel</h2>
+      <div class="obs-section">
+        <h3>Expression</h3>
+        <div id="obs-emotion">😐</div>
+        <div id="obs-emotion-label">待機中...</div>
+      </div>
+      <div class="obs-section">
+        <h3>Nod Count</h3>
+        <div id="obs-nod-count">0</div>
+        <div id="obs-nod-label">頷き回数</div>
+      </div>
+      <div class="obs-section">
+        <h3>Body Language</h3>
+        <div id="obs-withdrawal" style="font-size:14px;padding:3px 0;color:#ff9800">後退: --</div>
+        <div id="obs-eye-wandering" style="font-size:14px;padding:3px 0;color:#e040fb">視線不安定: --</div>
+      </div>
+      <div class="obs-section">
+        <h3>Gaze Position</h3>
+        <div id="gaze-minimap"><div id="gaze-dot"></div></div>
+      </div>
+      <div class="obs-section">
+        <h3>Speech</h3>
+        <div id="obs-speech-lecturer" style="font-size:14px;padding:3px 0;color:#42a5f5">Lecturer: --</div>
+        <div id="obs-speech-student" style="font-size:14px;padding:3px 0;color:#66bb6a">Student: --</div>
+      </div>
+      <div class="obs-section">
+        <h3>Multimodal Signals <span id="signal-live-dot" title="live">●</span></h3>
+        <table id="signal-table">
+          <thead>
+            <tr><th>カテゴリ</th><th>シグナル</th><th>方向</th><th>状態</th></tr>
+          </thead>
+          <tbody id="signal-tbody"></tbody>
+        </table>
+        <div id="speech-prosody-display" style="margin-top:10px;padding:8px;background:rgba(255,255,255,0.03);border-radius:6px;border:1px solid #30363d;min-height:60px">
+          <div style="font-size:11px;color:#8b949e">音響特徴 (librosa) — 録音停止後に解析</div>
+        </div>
+      </div>
+      <div class="obs-section">
+        <h3>Recording</h3>
+        <div id="rec-timer">00:00</div>
+        <div class="rec-controls">
+          <button id="rec-start-btn" onclick="startRecording()">Start</button>
+          <button id="rec-stop-btn" onclick="stopRecording()" disabled>Stop</button>
+        </div>
+        <div id="rec-result"></div>
+      </div>
+    </div>
+
+    <!-- Participants HUD -->
+    <div id="participants-hud"></div>
+
+    <!-- A-Frame Scene -->
+    <a-scene renderer="physicallyCorrectLights: true;">
+      <a-assets>
+        <a-asset-item id="classroomGLB" src="japanese_classroom.glb"></a-asset-item>
+      </a-assets>
+
+      <a-entity gltf-model="#classroomGLB" scale="1 1 1" position="0 0 0"></a-entity>
+
+      <!-- Lighting -->
+      <a-entity light="type: ambient; color: #ffffff; intensity: 0.6"></a-entity>
+      <a-entity light="type: point; color: #fffbe6; intensity: 1.5; distance: 12; decay: 1.5" position="-2 2.3 4.5"></a-entity>
+      <a-entity light="type: point; color: #fffbe6; intensity: 1.5; distance: 12; decay: 1.5" position="-2 2.3 8.5"></a-entity>
+      <a-entity light="type: directional; color: #ffe8c0; intensity: 0.8" position="3 4 6"></a-entity>
+      <a-entity light="type: point; color: #ffffff; intensity: 0.8; distance: 8; decay: 2" position="-6 2.0 6.5"></a-entity>
+
+      <!-- Player rig -->
+      <a-entity id="rig" movement-controls="fly:true;" position="-2 0 8">
+        <a-entity id="player" camera position="0 1.6 0" look-controls></a-entity>
+      </a-entity>
+
+      <!-- Remote avatars -->
+      <a-entity id="avatar-lecturer" visible="false" position="0 0 0">
+        <a-entity semi-avatar="color: #42a5f5" position="0 1.35 0"></a-entity>
+        <a-text id="label-lecturer" value="" align="center" position="0 1.75 0" color="#42a5f5" width="3" look-at="#player"></a-text>
+      </a-entity>
+      <a-entity id="avatar-student" visible="false" position="0 0 0">
+        <a-entity semi-avatar="color: #66bb6a" position="0 1.35 0"></a-entity>
+        <a-text id="label-student" value="" align="center" position="0 1.75 0" color="#66bb6a" width="3" look-at="#player"></a-text>
+        <a-text id="student-emotion-3d" value="" align="center" position="0 2.0 0" width="4" look-at="#player"></a-text>
+        <a-text id="student-signals-3d-pos" value="" align="center" position="0 2.35 0" color="#66bb6a" width="3.5" look-at="#player"></a-text>
+        <a-text id="student-signals-3d-neg" value="" align="center" position="0 2.6 0" color="#ef5350" width="3.5" look-at="#player"></a-text>
+      </a-entity>
+      <a-entity id="avatar-observer" visible="false" position="0 0 0">
+        <a-entity semi-avatar="color: #ab47bc" position="0 1.35 0"></a-entity>
+        <a-text id="label-observer" value="" align="center" position="0 1.75 0" color="#ab47bc" width="3" look-at="#player"></a-text>
+      </a-entity>
+    </a-scene>
+
+    <script>
+      // ========== Semi-style Avatar Component ==========
+      AFRAME.registerComponent('semi-avatar', {
+        schema: {
+          color: { type: 'string', default: '#66bb6a' }
+        },
+
+        init: function () {
+          const color = new THREE.Color(this.data.color);
+          const group = new THREE.Group();
+          this._group = group;
+          this._nodding = false;
+
+          // -- body --
+          const bodyGeo = new THREE.SphereGeometry(0.3, 32, 32);
+          const bodyMat = new THREE.MeshStandardMaterial({ color });
+          const body = new THREE.Mesh(bodyGeo, bodyMat);
+          body.scale.set(0.9, 0.9, 0.9);
+          group.add(body);
+
+          // -- face --
+          const faceGeo = new THREE.SphereGeometry(0.28, 32, 32);
+          const faceMat = new THREE.MeshStandardMaterial({ color: 0xfffaf0 });
+          const face = new THREE.Mesh(faceGeo, faceMat);
+          face.scale.set(0.6, 0.45, 0.25);
+          face.position.set(0, 0.1, -0.185);
+          face.rotation.x = THREE.MathUtils.degToRad(28.2);
+          group.add(face);
+
+          // -- eyes --
+          const eyeGeo = new THREE.SphereGeometry(0.02, 16, 16);
+          const eyeMat = new THREE.MeshStandardMaterial({ color: 0x230a05 });
+
+          const eyeR = new THREE.Mesh(eyeGeo, eyeMat);
+          eyeR.scale.set(0.7, 0.3, 0.3);
+          eyeR.position.set(-0.1, 0.1389, -0.26);
+          group.add(eyeR);
+          this._eyeR = eyeR;
+
+          const eyeL = new THREE.Mesh(eyeGeo, eyeMat);
+          eyeL.scale.set(0.7, 0.3, 0.3);
+          eyeL.position.set(0.1, 0.1398, -0.26);
+          group.add(eyeL);
+          this._eyeL = eyeL;
+
+          // -- cheeks --
+          const cheekGeo = new THREE.SphereGeometry(0.02, 16, 16);
+          const cheekMat = new THREE.MeshStandardMaterial({ color: 0xff9985, transparent: true, opacity: 0.1 });
+
+          const cheekR = new THREE.Mesh(cheekGeo, cheekMat);
+          cheekR.scale.set(1.37, 0.91, 0.7);
+          cheekR.position.set(-0.125, 0.083, -0.265);
+          cheekR.rotation.y = THREE.MathUtils.degToRad(25.3);
+          group.add(cheekR);
+
+          const cheekL = new THREE.Mesh(cheekGeo, cheekMat);
+          cheekL.scale.set(1.37, 0.91, 0.7);
+          cheekL.position.set(0.125, 0.083, -0.265);
+          cheekL.rotation.y = THREE.MathUtils.degToRad(-25.3);
+          group.add(cheekL);
+
+          // -- mouth --
+          const mouthGeo = new THREE.TorusGeometry(0.02, 0.002, 8, 16, Math.PI);
+          const mouthMat = new THREE.MeshStandardMaterial({ color: 0x230a05 });
+          const mouth = new THREE.Mesh(mouthGeo, mouthMat);
+          mouth.scale.set(1, 0.5, 1);
+          mouth.position.set(0, 0.125, -0.29);
+          mouth.rotation.set(
+            THREE.MathUtils.degToRad(27.5),
+            THREE.MathUtils.degToRad(5.66),
+            THREE.MathUtils.degToRad(-177.38)
+          );
+          group.add(mouth);
+
+          // -- arms --
+          const armGeo = new THREE.SphereGeometry(0.2, 16, 16);
+          const armMat = new THREE.MeshStandardMaterial({ color });
+
+          const armR = new THREE.Mesh(armGeo, armMat);
+          armR.scale.set(0.2, 0.3, 0.2);
+          armR.position.set(-0.11, -0.054, -0.28);
+          armR.rotation.set(
+            THREE.MathUtils.degToRad(-67.2),
+            THREE.MathUtils.degToRad(83.16),
+            THREE.MathUtils.degToRad(15.56)
+          );
+          group.add(armR);
+
+          const armL = new THREE.Mesh(armGeo, armMat);
+          armL.scale.set(0.2, 0.3, 0.2);
+          armL.position.set(0.096, -0.054, -0.27);
+          armL.rotation.set(
+            THREE.MathUtils.degToRad(-65.0),
+            THREE.MathUtils.degToRad(-146.1),
+            THREE.MathUtils.degToRad(43.3)
+          );
+          group.add(armL);
+
+          // -- legs --
+          const legGeo = new THREE.SphereGeometry(0.25, 16, 16);
+          const legMat = new THREE.MeshStandardMaterial({ color: 0x13316c });
+
+          const legR = new THREE.Mesh(legGeo, legMat);
+          legR.scale.set(0.3, 0.3, 0.3);
+          legR.position.set(-0.15, -0.25, 0.01);
+          group.add(legR);
+
+          const legL = new THREE.Mesh(legGeo, legMat);
+          legL.scale.set(0.3, 0.3, 0.3);
+          legL.position.set(0.15, -0.25, 0.01);
+          group.add(legL);
+
+          this.el.setObject3D('mesh', group);
+
+          // -- head pose tracking state --
+          this._targetPitch = 0;
+          this._targetYaw = 0;
+          this._hasPoseData = false;
+          this._nodImpulse = 0;      // additive nod animation overlay
+          this._nodImpulseStart = 0;  // timestamp when impulse started
+
+          // -- blink animation --
+          this._blinkInterval = setInterval(() => {
+            if (Math.random() < 0.1) {
+              this._eyeR.scale.y = 0.1;
+              this._eyeL.scale.y = 0.1;
+              setTimeout(() => {
+                if (this._eyeR) this._eyeR.scale.y = 0.3;
+                if (this._eyeL) this._eyeL.scale.y = 0.3;
+              }, 100);
+            }
+          }, 1000);
+
+          // -- sway + head pose animation --
+          this._swayStart = performance.now();
+          this._swayRaf = null;
+          const NOD_IMPULSE_DURATION = 400;  // ms
+          const NOD_IMPULSE_PEAK = -0.25;    // rad (~14 degrees down)
+          const sway = () => {
+            if (!this._group) return;
+            const now = performance.now();
+            const elapsed = now - this._swayStart;
+            this._group.rotation.z = Math.sin(elapsed * 0.0005) * 0.01;
+            this._group.position.y = Math.sin(elapsed * 0.001) * 0.005;
+
+            // Compute nod impulse (triangle: 0 → peak → 0 over 400ms)
+            let impulse = 0;
+            if (this._nodImpulse !== 0) {
+              const t = now - this._nodImpulseStart;
+              if (t < NOD_IMPULSE_DURATION) {
+                const half = NOD_IMPULSE_DURATION / 2;
+                impulse = t < half
+                  ? NOD_IMPULSE_PEAK * (t / half)
+                  : NOD_IMPULSE_PEAK * (1 - (t - half) / half);
+              } else {
+                this._nodImpulse = 0;
+              }
+            }
+
+            // Apply head pose: continuous tracking + nod impulse overlay
+            if (this._hasPoseData) {
+              const target = this._targetPitch + impulse;
+              this._group.rotation.x += (target - this._group.rotation.x) * 0.18;
+              this._group.rotation.y += (this._targetYaw - this._group.rotation.y) * 0.18;
+            } else {
+              // No continuous tracking — impulse drives rotation directly
+              this._group.rotation.x += (impulse - this._group.rotation.x) * 0.25;
+            }
+            this._swayRaf = requestAnimationFrame(sway);
+          };
+          this._swayRaf = requestAnimationFrame(sway);
+        },
+
+        setHeadPose: function (pitch, yaw) {
+          if (!this._group) return;
+          this._targetPitch = Math.max(-0.5, Math.min(0.3, pitch || 0));
+          this._targetYaw = Math.max(-0.5, Math.min(0.5, yaw || 0));
+          this._hasPoseData = true;
+        },
+
+        playNod: function () {
+          if (!this._group) return;
+          // Always fire — overlays on continuous tracking as an impulse
+          this._nodImpulse = 1;
+          this._nodImpulseStart = performance.now();
+        },
+
+        remove: function () {
+          if (this._blinkInterval) clearInterval(this._blinkInterval);
+          if (this._swayRaf) cancelAnimationFrame(this._swayRaf);
+          this._group = null;
+          this._eyeR = null;
+          this._eyeL = null;
+        }
+      });
+
+      // ========== Matrix Utilities ==========
+      function matTranspose(A) {
+        const rows = A.length, cols = A[0].length;
+        const T = Array.from({ length: cols }, () => new Array(rows));
+        for (let i = 0; i < rows; i++)
+          for (let j = 0; j < cols; j++) T[j][i] = A[i][j];
+        return T;
+      }
+      function matMul(A, B) {
+        const m = A.length, k = A[0].length, n = B[0].length;
+        const C = Array.from({ length: m }, () => new Array(n).fill(0));
+        for (let i = 0; i < m; i++)
+          for (let j = 0; j < n; j++)
+            for (let p = 0; p < k; p++) C[i][j] += A[i][p] * B[p][j];
+        return C;
+      }
+      function matInverse(A) {
+        const n = A.length;
+        const aug = A.map((row, i) => {
+          const r = row.slice();
+          for (let j = 0; j < n; j++) r.push(i === j ? 1 : 0);
+          return r;
+        });
+        for (let col = 0; col < n; col++) {
+          let maxRow = col, maxVal = Math.abs(aug[col][col]);
+          for (let row = col + 1; row < n; row++) {
+            if (Math.abs(aug[row][col]) > maxVal) { maxVal = Math.abs(aug[row][col]); maxRow = row; }
+          }
+          if (maxVal < 1e-12) return null;
+          [aug[col], aug[maxRow]] = [aug[maxRow], aug[col]];
+          const pivot = aug[col][col];
+          for (let j = 0; j < 2 * n; j++) aug[col][j] /= pivot;
+          for (let row = 0; row < n; row++) {
+            if (row === col) continue;
+            const factor = aug[row][col];
+            for (let j = 0; j < 2 * n; j++) aug[row][j] -= factor * aug[col][j];
+          }
+        }
+        return aug.map(row => row.slice(n));
+      }
+      function dotProduct(a, b) {
+        let s = 0; for (let i = 0; i < a.length; i++) s += a[i] * b[i]; return s;
+      }
+      function polyFeatures(rx, ry) {
+        return [1, rx, ry, rx * ry, rx * rx, ry * ry];
+      }
+      function trimmedMean(arr, trimRatio) {
+        const sorted = arr.slice().sort((a, b) => a - b);
+        const trimCount = Math.floor(sorted.length * trimRatio);
+        const trimmed = sorted.slice(trimCount, sorted.length - trimCount);
+        return trimmed.reduce((s, v) => s + v, 0) / trimmed.length;
+      }
+
+      // ========== Iris / Gaze ==========
+      function extractIrisRatios(landmarks) {
+        if (landmarks.length < 468) return null;
+        if (landmarks.length >= 478) {
+          const le = { outer: landmarks[33], inner: landmarks[133], iris: landmarks[468],
+                       top: landmarks[159], bottom: landmarks[145] };
+          const re = { outer: landmarks[263], inner: landmarks[362], iris: landmarks[473],
+                       top: landmarks[386], bottom: landmarks[374] };
+          const lDenomX = le.inner.x - le.outer.x;
+          const rDenomX = re.outer.x - re.inner.x;
+          const lDenomY = le.bottom.y - le.top.y;
+          const rDenomY = re.bottom.y - re.top.y;
+          if (Math.abs(lDenomX) >= 1e-6 && Math.abs(rDenomX) >= 1e-6 &&
+              Math.abs(lDenomY) >= 1e-6 && Math.abs(rDenomY) >= 1e-6) {
+            const lRatioX = (le.iris.x - le.outer.x) / lDenomX;
+            const rRatioX = (re.iris.x - re.inner.x) / rDenomX;
+            const ratioX = (lRatioX + rRatioX) / 2;
+            const lRatioY = (le.iris.y - le.top.y) / lDenomY;
+            const rRatioY = (re.iris.y - re.top.y) / rDenomY;
+            const ratioY = (lRatioY + rRatioY) / 2;
+            if (isFinite(ratioX) && isFinite(ratioY)) return { ratioX, ratioY };
+          }
+        }
+        const noseTip = landmarks[1];
+        const leftTemple = landmarks[234], rightTemple = landmarks[454];
+        const forehead = landmarks[10], chin = landmarks[152];
+        const faceCenterX = (leftTemple.x + rightTemple.x) / 2;
+        const faceCenterY = (forehead.y + chin.y) / 2;
+        const faceWidth = Math.abs(rightTemple.x - leftTemple.x);
+        const faceHeight = Math.abs(chin.y - forehead.y);
+        if (faceWidth < 1e-6 || faceHeight < 1e-6) return null;
+        const ratioX = (noseTip.x - faceCenterX) / faceWidth + 0.5;
+        const ratioY = (noseTip.y - faceCenterY) / faceHeight + 0.5;
+        if (isFinite(ratioX) && isFinite(ratioY)) return { ratioX, ratioY };
+        return null;
+      }
+
+      function solveCalibration(data) {
+        const X = data.map(d => polyFeatures(d.ratioX, d.ratioY));
+        const sx = data.map(d => [d.screenX]);
+        const sy = data.map(d => [d.screenY]);
+        const Xt = matTranspose(X);
+        const XtX = matMul(Xt, X);
+        for (let i = 0; i < XtX.length; i++) XtX[i][i] += RIDGE_LAMBDA;
+        const XtXinv = matInverse(XtX);
+        if (!XtXinv) return null;
+        const P = matMul(XtXinv, Xt);
+        const wx = matMul(P, sx).map(r => r[0]);
+        const wy = matMul(P, sy).map(r => r[0]);
+        return { wx, wy };
+      }
+
+      function estimateGaze(landmarks) {
+        const iris = extractIrisRatios(landmarks);
+        if (!iris) return null;
+        let screenX, screenY;
+        if (calibrationModel) {
+          const features = polyFeatures(iris.ratioX, iris.ratioY);
+          screenX = dotProduct(features, calibrationModel.wx);
+          screenY = dotProduct(features, calibrationModel.wy);
+        } else {
+          screenX = (1 - iris.ratioX) * window.innerWidth;
+          screenY = iris.ratioY * window.innerHeight;
+        }
+        screenX = Math.max(0, Math.min(window.innerWidth, screenX));
+        screenY = Math.max(0, Math.min(window.innerHeight, screenY));
+        if (smoothedGaze) {
+          screenX = gazeAlpha * screenX + (1 - gazeAlpha) * smoothedGaze.x;
+          screenY = gazeAlpha * screenY + (1 - gazeAlpha) * smoothedGaze.y;
+        }
+        smoothedGaze = { x: screenX, y: screenY };
+        return { x: screenX, y: screenY };
+      }
+
+      // ========== Nod Detection ==========
+      let headPoseHistory = [];
+      const POSE_HISTORY_MAX = 60;
+      let smoothedNoseY = null, smoothedNoseX = null;
+      let baselineNoseY = null, baselineNoseX = null;
+      let nodPhase = 'IDLE';
+      let nodPeakDelta = 0, nodPeakUpdated = false;
+      let nodStartTime = null;
+      const NOD_SMOOTH_ALPHA = 0.55;
+      const BASELINE_ALPHA = 0.10;
+      const NOD_MIN_DELTA_Y = 0.010;
+      const NOD_RETURN_RATIO = 0.35;
+      const NOD_RETURN_RATIO_STRICT = 0.55;
+      const NOD_PEAK_AMP_FACTOR = 2.0;
+      const NOD_MAX_DURATION = 600;
+      const NOD_MIN_DURATION = 60;
+      const NOD_COOLDOWN = 500;
+      const NOD_MAX_YAW_RANGE = 0.06;
+      const NOD_VH_RATIO = 1.5;
+      const NOD_TAIL_MS = 600;  // mask wobble metrics for this long after a confirmed nod (head returns to neutral)
+      let lastNodTime = 0;
+      let nodCount = 0;
+      let nodActiveUntil = 0;   // timestamp until which nodActive flag stays true
+      let currentHeadPitch = 0;
+      let currentHeadYaw = 0;
+
+      // Head shake (yaw oscillation) detection — denotes 否定・不同意
+      let yawHistory = [];
+      let headShakeActive = false;
+      let headShakeCount = 0;
+      let headShakeActiveUntil = 0;
+      const SHAKE_HISTORY_MS = 1200;
+      const SHAKE_MIN_AMP = 0.18;      // yaw normalized amplitude (peak-to-peak)
+      const SHAKE_MIN_CROSSINGS = 4;   // at least 2 full oscillations across mean
+      const SHAKE_HOLD_MS = 600;       // hold flag for animation/UI feedback
+      const SHAKE_COOLDOWN_MS = 800;   // do not increment count more than once per cooldown
+
+      function detectHeadShake(yawNorm, timestamp) {
+        yawHistory.push({ y: yawNorm, t: timestamp });
+        while (yawHistory.length > 0 && timestamp - yawHistory[0].t > SHAKE_HISTORY_MS) {
+          yawHistory.shift();
+        }
+        if (yawHistory.length < 8) {
+          if (timestamp > headShakeActiveUntil) headShakeActive = false;
+          return;
+        }
+        // Exclude periods of confirmed nodding (pitch-driven motion can leak into yaw)
+        if (nodPhase !== 'IDLE') {
+          if (timestamp > headShakeActiveUntil) headShakeActive = false;
+          return;
+        }
+        const mean = yawHistory.reduce((s, p) => s + p.y, 0) / yawHistory.length;
+        let crossings = 0;
+        for (let i = 1; i < yawHistory.length; i++) {
+          if ((yawHistory[i - 1].y - mean) * (yawHistory[i].y - mean) < 0) crossings++;
+        }
+        const ys = yawHistory.map(p => p.y);
+        const amp = Math.max(...ys) - Math.min(...ys);
+        if (crossings >= SHAKE_MIN_CROSSINGS && amp > SHAKE_MIN_AMP) {
+          if (!headShakeActive && timestamp > headShakeActiveUntil + SHAKE_COOLDOWN_MS) {
+            headShakeCount++;
+          }
+          headShakeActive = true;
+          headShakeActiveUntil = timestamp + SHAKE_HOLD_MS;
+        } else if (timestamp > headShakeActiveUntil) {
+          headShakeActive = false;
+        }
+      }
+
+      function detectNod(landmarks, timestamp) {
+        const noseTip = landmarks[1];
+        const forehead = landmarks[10], chin = landmarks[152];
+        const leftEye = landmarks[33], rightEye = landmarks[263];
+        const faceH = Math.hypot(chin.x - forehead.x, chin.y - forehead.y);
+        if (faceH < 0.03) return;
+
+        const eyeMidX = (leftEye.x + rightEye.x) / 2;
+        const eyeW = Math.abs(rightEye.x - leftEye.x);
+        const yaw = eyeW > 0.001 ? (noseTip.x - eyeMidX) / eyeW : 0;
+
+        const rawY = noseTip.y, rawX = noseTip.x;
+        let sY = rawY, sX = rawX;
+        if (smoothedNoseY !== null) {
+          sY = NOD_SMOOTH_ALPHA * rawY + (1 - NOD_SMOOTH_ALPHA) * smoothedNoseY;
+          sX = NOD_SMOOTH_ALPHA * rawX + (1 - NOD_SMOOTH_ALPHA) * smoothedNoseX;
+        }
+        smoothedNoseY = sY; smoothedNoseX = sX;
+
+        if (baselineNoseY === null) {
+          baselineNoseY = sY; baselineNoseX = sX;
+        } else if (nodPhase === 'IDLE') {
+          baselineNoseY = BASELINE_ALPHA * sY + (1 - BASELINE_ALPHA) * baselineNoseY;
+          baselineNoseX = BASELINE_ALPHA * sX + (1 - BASELINE_ALPHA) * baselineNoseX;
+        }
+
+        headPoseHistory.push({ y: sY, x: sX, yaw, time: timestamp });
+        while (headPoseHistory.length > POSE_HISTORY_MAX) headPoseHistory.shift();
+        if (headPoseHistory.length < 5) return;
+        if (timestamp - lastNodTime < NOD_COOLDOWN) return;
+
+        const deltaY = sY - baselineNoseY;
+        const deltaX = sX - baselineNoseX;
+
+        // Export head pose for network sync (pitch=nod, yaw=turn)
+        currentHeadPitch = faceH > 0.01 ? -(deltaY / faceH) * 2.5 : 0;
+        currentHeadYaw = eyeW > 0.01 ? (deltaX / eyeW) * 1.5 : 0;
+
+        const threshold = Math.max(NOD_MIN_DELTA_Y, faceH * 0.035);
+
+        switch (nodPhase) {
+          case 'IDLE':
+            if (Math.abs(deltaY) > threshold && Math.abs(deltaY) > Math.abs(deltaX) * NOD_VH_RATIO) {
+              nodPhase = 'MOVING'; nodPeakDelta = deltaY; nodPeakUpdated = false; nodStartTime = timestamp;
+            }
+            break;
+          case 'MOVING':
+            if (timestamp - nodStartTime > NOD_MAX_DURATION) {
+              // Timeout without confirmation: reset baseline to absorb drift
+              nodPhase = 'IDLE'; baselineNoseY = sY; baselineNoseX = sX; break;
+            }
+            const recent = headPoseHistory.filter(h => h.time >= nodStartTime);
+            if (recent.length > 3) {
+              const yaws = recent.map(h => h.yaw);
+              if (Math.max(...yaws) - Math.min(...yaws) > NOD_MAX_YAW_RANGE) { nodPhase = 'IDLE'; break; }
+              const xs = recent.map(h => h.x), ys = recent.map(h => h.y);
+              if (Math.max(...ys) - Math.min(...ys) < (Math.max(...xs) - Math.min(...xs)) * NOD_VH_RATIO) { nodPhase = 'IDLE'; break; }
+            }
+            if (Math.abs(deltaY) > Math.abs(nodPeakDelta)) { nodPeakDelta = deltaY; nodPeakUpdated = true; }
+            if (timestamp - nodStartTime < NOD_MIN_DURATION) break;
+            const peakAbs = Math.abs(nodPeakDelta);
+            const returnAmount = peakAbs - Math.abs(deltaY);
+            const returnRatio = peakAbs > 0 ? returnAmount / peakAbs : 0;
+            let nodConfirmed = false;
+            if (nodPeakUpdated) {
+              nodConfirmed = peakAbs > threshold && returnRatio > NOD_RETURN_RATIO;
+            } else {
+              nodConfirmed = peakAbs > threshold * NOD_PEAK_AMP_FACTOR && returnRatio > NOD_RETURN_RATIO_STRICT;
+            }
+            if (nodConfirmed) {
+              nodPhase = 'IDLE'; nodCount++; lastNodTime = timestamp;
+              nodActiveUntil = timestamp + NOD_TAIL_MS;  // keep masking during return-to-neutral
+              baselineNoseY = sY; baselineNoseX = sX;
+              headPoseHistory = headPoseHistory.filter(h => h.time > timestamp - 200);
+            }
+            break;
+        }
+      }
+
+      // ========== Body Withdrawal Detection ==========
+      let baselineFaceSize = null;
+      let smoothedFaceSize = null;
+      let withdrawalActive = false;
+      let withdrawalStartTime = null;
+      let bodyWithdrawalCount = 0;
+      let lastWithdrawalTime = 0;
+      const BASELINE_ALPHA_FACE = 0.02;
+      const FACE_SMOOTH_ALPHA = 0.3;
+      const WITHDRAWAL_RATIO_THRESHOLD = 0.85;
+      const WITHDRAWAL_DURATION = 300;
+      const WITHDRAWAL_COOLDOWN = 2000;
+
+      function detectBodyWithdrawal(landmarks, timestamp) {
+        const forehead = landmarks[10], chin = landmarks[152];
+        const faceH = Math.hypot(chin.x - forehead.x, chin.y - forehead.y);
+        if (faceH < 0.03) return;
+
+        // Smooth current face size
+        if (smoothedFaceSize === null) {
+          smoothedFaceSize = faceH;
+        } else {
+          smoothedFaceSize = FACE_SMOOTH_ALPHA * faceH + (1 - FACE_SMOOTH_ALPHA) * smoothedFaceSize;
+        }
+
+        // Initialize or update baseline (slow adaptation)
+        if (baselineFaceSize === null) {
+          baselineFaceSize = smoothedFaceSize;
+          return;
+        }
+        // Only update baseline when not in withdrawal
+        if (!withdrawalActive) {
+          baselineFaceSize = BASELINE_ALPHA_FACE * smoothedFaceSize + (1 - BASELINE_ALPHA_FACE) * baselineFaceSize;
+        }
+
+        const ratio = smoothedFaceSize / baselineFaceSize;
+
+        if (ratio <= WITHDRAWAL_RATIO_THRESHOLD) {
+          if (!withdrawalActive) {
+            if (withdrawalStartTime === null) {
+              withdrawalStartTime = timestamp;
+            } else if (timestamp - withdrawalStartTime >= WITHDRAWAL_DURATION) {
+              // Sustained withdrawal detected
+              if (timestamp - lastWithdrawalTime >= WITHDRAWAL_COOLDOWN) {
+                withdrawalActive = true;
+                bodyWithdrawalCount++;
+                lastWithdrawalTime = timestamp;
+              }
+            }
+          }
+        } else {
+          withdrawalActive = false;
+          withdrawalStartTime = null;
+        }
+      }
+
+      // ========== Eye Wandering Detection ==========
+      let irisHistory = [];
+      const IRIS_HISTORY_WINDOW = 1000;
+      let eyeWandering = false;
+      let eyeWanderingCount = 0;
+      let lastEyeWanderingTime = 0;
+      const EYE_WANDERING_DIRECTION_THRESHOLD = 5;
+      const EYE_WANDERING_COOLDOWN = 2000;
+      const EYE_WANDERING_ANGLE_THRESHOLD = Math.PI / 2; // 90 degrees
+
+      function detectEyeWandering(landmarks, timestamp) {
+        const iris = extractIrisRatios(landmarks);
+        if (!iris) return;
+
+        irisHistory.push({ ratioX: iris.ratioX, ratioY: iris.ratioY, time: timestamp });
+
+        // Trim to window
+        while (irisHistory.length > 0 && timestamp - irisHistory[0].time > IRIS_HISTORY_WINDOW) {
+          irisHistory.shift();
+        }
+
+        if (irisHistory.length < 4) return;
+
+        // Calculate direction changes
+        let directionChanges = 0;
+        let prevDx = null, prevDy = null;
+
+        for (let i = 1; i < irisHistory.length; i++) {
+          const dx = irisHistory[i].ratioX - irisHistory[i - 1].ratioX;
+          const dy = irisHistory[i].ratioY - irisHistory[i - 1].ratioY;
+          const speed = Math.sqrt(dx * dx + dy * dy);
+
+          // Ignore very small movements (noise)
+          if (speed < 0.002) continue;
+
+          if (prevDx !== null) {
+            // Angle between consecutive velocity vectors
+            const dot = prevDx * dx + prevDy * dy;
+            const mag1 = Math.sqrt(prevDx * prevDx + prevDy * prevDy);
+            const mag2 = Math.sqrt(dx * dx + dy * dy);
+            if (mag1 > 0 && mag2 > 0) {
+              const cosAngle = Math.max(-1, Math.min(1, dot / (mag1 * mag2)));
+              const angle = Math.acos(cosAngle);
+              if (angle > EYE_WANDERING_ANGLE_THRESHOLD) {
+                directionChanges++;
+              }
+            }
+          }
+          prevDx = dx;
+          prevDy = dy;
+        }
+
+        const wasWandering = eyeWandering;
+        eyeWandering = directionChanges >= EYE_WANDERING_DIRECTION_THRESHOLD;
+
+        if (eyeWandering && !wasWandering) {
+          if (timestamp - lastEyeWanderingTime >= EYE_WANDERING_COOLDOWN) {
+            eyeWanderingCount++;
+            lastEyeWanderingTime = timestamp;
+          }
+        }
+      }
+
+      // ========== Emotion Detection ==========
+      const emotionEmojis = { happy: '😊', sad: '😢', angry: '😠', surprised: '😲', confused: '🤔', neutral: '😐' };
+      const emotionNames = { happy: '喜び', sad: '悲しみ', angry: '怒り', surprised: '驚き', confused: '困惑', neutral: '無表情' };
+
+      function detectEmotion(landmarks) {
+        if (!landmarks || landmarks.length < 468) return { emotion: 'neutral', scores: {}, debug: {} };
+        const p = (i) => landmarks[i];
+        const leftEyeTop = p(159), leftEyeBottom = p(145);
+        const rightEyeTop = p(386), rightEyeBottom = p(374);
+        const leftMouthCorner = p(61), rightMouthCorner = p(291);
+        const upperLip = p(13), lowerLip = p(14);
+        const leftEyebrowInner = p(107), rightEyebrowInner = p(336);
+        const noseTip = p(1);
+        const leftEyeCenter = { x: (leftEyeTop.x + leftEyeBottom.x) / 2, y: (leftEyeTop.y + leftEyeBottom.y) / 2 };
+        const rightEyeCenter = { x: (rightEyeTop.x + rightEyeBottom.x) / 2, y: (rightEyeTop.y + rightEyeBottom.y) / 2 };
+        const faceScale = Math.hypot(rightEyeCenter.x - leftEyeCenter.x, rightEyeCenter.y - leftEyeCenter.y);
+        if (faceScale < 0.001) return { emotion: 'neutral', scores: {}, debug: {} };
+
+        const leftEyeH = Math.hypot(leftEyeTop.x - leftEyeBottom.x, leftEyeTop.y - leftEyeBottom.y);
+        const rightEyeH = Math.hypot(rightEyeTop.x - rightEyeBottom.x, rightEyeTop.y - rightEyeBottom.y);
+        const eyeOpenRatio = (leftEyeH + rightEyeH) / 2 / faceScale;
+        const mouthCenterY = (upperLip.y + lowerLip.y) / 2;
+        const cornersY = (leftMouthCorner.y + rightMouthCorner.y) / 2;
+        const smileRatio = (mouthCenterY - cornersY) / faceScale;
+        const mouthHeight = Math.hypot(upperLip.x - lowerLip.x, upperLip.y - lowerLip.y);
+        const openRatio = mouthHeight / faceScale;
+        const browY = (leftEyebrowInner.y + rightEyebrowInner.y) / 2;
+        const browRatio = (noseTip.y - browY) / faceScale;
+        const eyeSlope = (rightEyeCenter.y - leftEyeCenter.y) / (rightEyeCenter.x - leftEyeCenter.x);
+        const faceTilt = Math.abs(Math.atan(eyeSlope));
+
+        const smileScore = Math.max(0, (smileRatio - 0.03) * 10);
+        const isMouthOpen = openRatio > 0.15;
+        const isEyeOpen = eyeOpenRatio > 0.23 || browRatio > 1.05;
+        let surpriseScore = 0;
+        if (isMouthOpen && isEyeOpen) {
+          surpriseScore = Math.max(0, (openRatio - 0.15) * 5) + Math.max(0, (eyeOpenRatio - 0.23) * 10) + Math.max(0, (browRatio - 1.0) * 3);
+        }
+        const sadScore = Math.max(0, (-smileRatio - 0.05) * 8);
+        const angryScore = Math.max(0, (0.85 - browRatio) * 8);
+        const tiltScore = Math.max(0, (faceTilt - 0.1) * 10);
+        const confusedScore = smileScore > 0.5 ? 0 : tiltScore + angryScore * 0.5 + sadScore * 0.5;
+        const emotions = { happy: smileScore, surprised: surpriseScore, sad: sadScore, angry: angryScore, confused: confusedScore, neutral: 0.1 };
+
+        let maxEmotion = 'neutral', maxScore = 0.1;
+        for (const [emotion, score] of Object.entries(emotions)) {
+          if (score > maxScore) { maxScore = score; maxEmotion = emotion; }
+        }
+        return { emotion: maxEmotion, scores: { smile: smileScore.toFixed(2), surprise: surpriseScore.toFixed(2), sad: sadScore.toFixed(2), angry: angryScore.toFixed(2), confused: confusedScore.toFixed(2) }, debug: { smileRatio: smileRatio.toFixed(3), openRatio: openRatio.toFixed(3), browRatio: browRatio.toFixed(3), eyeOpen: eyeOpenRatio.toFixed(3) } };
+      }
+
+      // ========== Calibration State ==========
+      let calibrationState = 'IDLE';
+      let calibrationModel = null;
+      let calibrationData = [];
+      let sampleBuffer = [];
+      const SAMPLES_PER_POINT = 30;
+      const RIDGE_LAMBDA = 0.001;
+      let currentCalibPoint = 0;
+      let currentCalibElement = null;
+      let faceDetectedDuringCalib = false;
+      let calibRetryCount = 0;
+      const MAX_RETRIES_PER_POINT = 3;
+      let smoothedGaze = null;
+      const gazeAlpha = 0.3;
+
+      const CALIB_POINTS = [
+        { x: 50, y: 50 }, { x: 10, y: 10 }, { x: 90, y: 90 },
+        { x: 90, y: 10 }, { x: 10, y: 90 }, { x: 10, y: 50 },
+        { x: 90, y: 50 }, { x: 50, y: 10 }, { x: 50, y: 90 },
+      ];
+
+      function startCalibration() {
+        calibrationData = []; sampleBuffer = []; currentCalibPoint = 0; calibRetryCount = 0;
+        calibrationState = 'PREPARING';
+        if (document.pointerLockElement) document.exitPointerLock();
+        const player = document.getElementById('player');
+        if (player) player.setAttribute('look-controls', 'enabled', false);
+
+        const overlay = document.getElementById('calibration-overlay');
+        const instruction = document.getElementById('calib-instruction');
+        const progress = document.getElementById('calib-progress');
+        overlay.style.display = 'block';
+        progress.textContent = '';
+        instruction.innerHTML = '視線キャリブレーション<br><br>赤い点を見ながら画面をクリックしてください<br>頭はできるだけ動かさないでください<br><br><span id="calib-countdown">3</span>秒後に開始...';
+
+        overlay.onclick = (e) => {
+          e.stopPropagation(); e.preventDefault();
+          if (calibrationState === 'COLLECTING' || calibrationState === 'SAMPLING') onCalibPointClick(e);
+        };
+
+        let countdown = 3;
+        const timer = setInterval(() => {
+          countdown--;
+          const el = document.getElementById('calib-countdown');
+          if (el) el.textContent = countdown;
+          if (countdown <= 0) { clearInterval(timer); showNextCalibPoint(); }
+        }, 1000);
+      }
+
+      function showNextCalibPoint() {
+        const overlay = document.getElementById('calibration-overlay');
+        const instruction = document.getElementById('calib-instruction');
+        const progress = document.getElementById('calib-progress');
+        instruction.textContent = ''; calibrationState = 'COLLECTING'; sampleBuffer = [];
+        faceDetectedDuringCalib = false;
+        if (currentCalibElement) { currentCalibElement.remove(); currentCalibElement = null; }
+        if (currentCalibPoint >= CALIB_POINTS.length) { processCalibration(); return; }
+        const pt = CALIB_POINTS[currentCalibPoint];
+        progress.textContent = `${currentCalibPoint + 1} / ${CALIB_POINTS.length}`;
+        const dot = document.createElement('div');
+        dot.className = 'calib-point'; dot.style.left = pt.x + '%'; dot.style.top = pt.y + '%';
+        dot.style.display = 'block';
+        dot.addEventListener('click', onCalibPointClick);
+        overlay.appendChild(dot); currentCalibElement = dot;
+      }
+
+      let samplingTimer = null;
+      function onCalibPointClick(e) {
+        if (e) { e.stopPropagation(); e.preventDefault(); }
+        if (calibrationState !== 'COLLECTING' && calibrationState !== 'SAMPLING') return;
+        if (currentCalibElement) currentCalibElement.classList.add('collecting');
+        sampleBuffer = []; calibrationState = 'SAMPLING';
+        document.getElementById('calib-sample-count').style.display = 'block';
+        document.getElementById('calib-sample-count').textContent = 'サンプル: 0 / ' + SAMPLES_PER_POINT;
+        if (samplingTimer) clearTimeout(samplingTimer);
+        samplingTimer = setTimeout(() => {
+          if (calibrationState === 'SAMPLING') {
+            if (sampleBuffer.length >= 5) { finishCalibPoint(); }
+            else {
+              calibRetryCount++;
+              if (calibRetryCount >= MAX_RETRIES_PER_POINT) {
+                const pt = CALIB_POINTS[currentCalibPoint];
+                calibrationData.push({ ratioX: 0.5, ratioY: 0.5, screenX: pt.x / 100 * window.innerWidth, screenY: pt.y / 100 * window.innerHeight });
+                currentCalibPoint++; calibRetryCount = 0; calibrationState = 'COLLECTING';
+                document.getElementById('calib-sample-count').style.display = 'none'; showNextCalibPoint();
+              } else {
+                calibrationState = 'COLLECTING';
+                if (currentCalibElement) currentCalibElement.classList.remove('collecting');
+                document.getElementById('calib-sample-count').textContent = 'リトライ... もう一度クリック';
+              }
+            }
+          }
+        }, 5000);
+      }
+
+      function collectCalibSample(irisRatios) {
+        if (calibrationState !== 'SAMPLING') return;
+        document.getElementById('calib-face-warning').style.display = 'none';
+        sampleBuffer.push(irisRatios);
+        document.getElementById('calib-sample-count').textContent = `サンプル: ${sampleBuffer.length} / ${SAMPLES_PER_POINT}`;
+        if (sampleBuffer.length >= SAMPLES_PER_POINT) {
+          if (samplingTimer) { clearTimeout(samplingTimer); samplingTimer = null; }
+          finishCalibPoint();
+        }
+      }
+
+      function finishCalibPoint() {
+        const rxValues = sampleBuffer.map(s => s.ratioX);
+        const ryValues = sampleBuffer.map(s => s.ratioY);
+        const trimRatio = sampleBuffer.length >= 20 ? 0.2 : 0;
+        const avgRX = trimmedMean(rxValues, trimRatio);
+        const avgRY = trimmedMean(ryValues, trimRatio);
+        const pt = CALIB_POINTS[currentCalibPoint];
+        calibrationData.push({ ratioX: avgRX, ratioY: avgRY, screenX: pt.x / 100 * window.innerWidth, screenY: pt.y / 100 * window.innerHeight });
+        currentCalibPoint++; calibRetryCount = 0; calibrationState = 'COLLECTING';
+        document.getElementById('calib-sample-count').style.display = 'none'; showNextCalibPoint();
+      }
+
+      function processCalibration() {
+        calibrationState = 'PROCESSING';
+        const instruction = document.getElementById('calib-instruction');
+        const progress = document.getElementById('calib-progress');
+        instruction.textContent = '計算中...'; progress.textContent = '';
+        const model = solveCalibration(calibrationData);
+        if (model) {
+          calibrationModel = model; calibrationState = 'CALIBRATED'; smoothedGaze = null;
+          localStorage.setItem('gazeCalibration', JSON.stringify({ wx: model.wx, wy: model.wy, timestamp: Date.now(), screenWidth: window.innerWidth, screenHeight: window.innerHeight }));
+          instruction.textContent = 'キャリブレーション完了！';
+          document.getElementById('start-calibration').textContent = '再キャリブレーション';
+          setTimeout(() => {
+            document.getElementById('calibration-overlay').style.display = 'none';
+            document.getElementById('calibration-overlay').onclick = null;
+            if (currentCalibElement) { currentCalibElement.remove(); currentCalibElement = null; }
+            const player = document.getElementById('player');
+            if (player) player.setAttribute('look-controls', 'enabled', true);
+          }, 1000);
+        } else {
+          instruction.textContent = 'キャリブレーション失敗。もう一度お試しください。';
+          calibrationState = 'IDLE';
+          setTimeout(() => {
+            document.getElementById('calibration-overlay').style.display = 'none';
+            document.getElementById('calibration-overlay').onclick = null;
+            const player = document.getElementById('player');
+            if (player) player.setAttribute('look-controls', 'enabled', true);
+          }, 2000);
+        }
+      }
+
+      // ========== WebRTC P2P Audio ==========
+      const ICE_SERVERS = [
+        { urls: 'stun:stun.l.google.com:19302' },
+        { urls: 'stun:stun1.l.google.com:19302' },
+      ];
+      const peerConnections = {};  // socketId -> RTCPeerConnection
+      const iceCandidateBuffers = {};  // socketId -> [RTCIceCandidate]
+
+      function createPeerConnection(peerId, isInitiator) {
+        if (peerConnections[peerId]) return peerConnections[peerId];
+        const pc = new RTCPeerConnection({ iceServers: ICE_SERVERS });
+        peerConnections[peerId] = pc;
+        iceCandidateBuffers[peerId] = [];
+
+        // Add local audio track from VAD stream
+        if (vadStream) {
+          vadStream.getAudioTracks().forEach(track => {
+            pc.addTrack(track, vadStream);
+          });
+        }
+
+        // ICE candidate → relay via signaling
+        pc.onicecandidate = (event) => {
+          if (event.candidate && socket) {
+            socket.emit('rtc-ice-candidate', { to: peerId, candidate: event.candidate });
+          }
+        };
+
+        // Receive remote audio → create <audio> element
+        pc.ontrack = (event) => {
+          let audio = document.getElementById('remote-audio-' + peerId);
+          if (!audio) {
+            audio = document.createElement('audio');
+            audio.id = 'remote-audio-' + peerId;
+            audio.autoplay = true;
+            document.body.appendChild(audio);
+          }
+          audio.srcObject = event.streams[0];
+          // Apply selected speaker if available
+          if (selectedSpeakerId && typeof audio.setSinkId === 'function') {
+            audio.setSinkId(selectedSpeakerId).catch(() => {});
+          }
+          console.log('[ObsRoom] Remote audio track received from', peerId);
+        };
+
+        pc.onconnectionstatechange = () => {
+          console.log('[ObsRoom] Peer', peerId, 'connection:', pc.connectionState);
+        };
+
+        if (isInitiator) {
+          startRtcOffer(peerId, pc);
+        }
+        return pc;
+      }
+
+      async function startRtcOffer(peerId, pc) {
+        try {
+          const offer = await pc.createOffer();
+          await pc.setLocalDescription(offer);
+          socket.emit('rtc-offer', { to: peerId, offer });
+        } catch (err) {
+          console.error('[ObsRoom] rtc-offer error:', err);
+        }
+      }
+
+      async function handleRtcOffer(from, offer) {
+        if (!peerConnections[from]) {
+          createPeerConnection(from, false);
+        }
+        const pc = peerConnections[from];
+        try {
+          await pc.setRemoteDescription(new RTCSessionDescription(offer));
+          flushIceCandidates(from);
+          const answer = await pc.createAnswer();
+          await pc.setLocalDescription(answer);
+          socket.emit('rtc-answer', { to: from, answer });
+        } catch (err) {
+          console.error('[ObsRoom] handleRtcOffer error:', err);
+        }
+      }
+
+      async function handleRtcAnswer(from, answer) {
+        if (!peerConnections[from]) return;
+        try {
+          await peerConnections[from].setRemoteDescription(new RTCSessionDescription(answer));
+          flushIceCandidates(from);
+        } catch (err) {
+          console.error('[ObsRoom] handleRtcAnswer error:', err);
+        }
+      }
+
+      async function handleRtcIceCandidate(from, candidate) {
+        if (!peerConnections[from]) {
+          if (!iceCandidateBuffers[from]) iceCandidateBuffers[from] = [];
+          iceCandidateBuffers[from].push(candidate);
+          return;
+        }
+        const pc = peerConnections[from];
+        if (pc.remoteDescription) {
+          try {
+            await pc.addIceCandidate(new RTCIceCandidate(candidate));
+          } catch (err) {
+            console.warn('[ObsRoom] addIceCandidate error:', err);
+          }
+        } else {
+          if (!iceCandidateBuffers[from]) iceCandidateBuffers[from] = [];
+          iceCandidateBuffers[from].push(candidate);
+        }
+      }
+
+      function flushIceCandidates(peerId) {
+        const buf = iceCandidateBuffers[peerId];
+        if (!buf || !buf.length) return;
+        const pc = peerConnections[peerId];
+        if (!pc || !pc.remoteDescription) return;
+        buf.forEach(candidate => {
+          pc.addIceCandidate(new RTCIceCandidate(candidate)).catch(() => {});
+        });
+        iceCandidateBuffers[peerId] = [];
+      }
+
+      function setupWebRTCConnections(state) {
+        // Send offers to all existing participants (by socketId)
+        for (const role of ['lecturer', 'student', 'observer']) {
+          if (state[role] && state[role].socketId && state[role].socketId !== socket.id) {
+            const peerId = state[role].socketId;
+            if (!peerConnections[peerId]) {
+              console.log('[ObsRoom] Initiating WebRTC to', role, peerId);
+              createPeerConnection(peerId, true);
+            }
+          }
+        }
+      }
+
+      function replaceAudioTrackOnPeers() {
+        if (!vadStream) return;
+        const newTrack = vadStream.getAudioTracks()[0];
+        if (!newTrack) return;
+        for (const [peerId, pc] of Object.entries(peerConnections)) {
+          const senders = pc.getSenders();
+          const audioSender = senders.find(s => s.track && s.track.kind === 'audio');
+          if (audioSender) {
+            audioSender.replaceTrack(newTrack).catch(err => {
+              console.warn('[ObsRoom] replaceTrack error:', err);
+            });
+          }
+        }
+      }
+
+      function removeAllPeerConnections() {
+        for (const [peerId, pc] of Object.entries(peerConnections)) {
+          pc.close();
+          const audio = document.getElementById('remote-audio-' + peerId);
+          if (audio) audio.remove();
+          delete peerConnections[peerId];
+          delete iceCandidateBuffers[peerId];
+        }
+      }
+
+      // ========== Socket.IO ==========
+      let socket = null;
+      let myRole = null;
+      let faceSendInterval = null;
+      let latestFaceData = null;
+      let positionSyncInterval = null;
+      let recTimerInterval = null;
+      let heartbeatInterval = null;
+
+      function connectSocket() {
+        const proto = location.protocol === 'https:' ? 'wss' : 'ws';
+        socket = io({ path: '/webxr/observation-room-io/', transports: ['polling'] });
+
+        socket.on('connect', () => { console.log('[ObsRoom] Connected:', socket.id); });
+
+        socket.on('room-state', (state) => {
+          updateLobbyState(state);
+          updateParticipantsHud(state);
+          updateAvatars(state);
+          // Clean up WebRTC connections for participants who left
+          if (myRole) {
+            const activeSocketIds = new Set();
+            for (const role of ['lecturer', 'student', 'observer']) {
+              if (state[role] && state[role].socketId) activeSocketIds.add(state[role].socketId);
+            }
+            for (const peerId of Object.keys(peerConnections)) {
+              if (!activeSocketIds.has(peerId)) {
+                console.log('[ObsRoom] Cleaning up peer connection for departed:', peerId);
+                peerConnections[peerId].close();
+                const audio = document.getElementById('remote-audio-' + peerId);
+                if (audio) audio.remove();
+                delete peerConnections[peerId];
+                delete iceCandidateBuffers[peerId];
+              }
+            }
+          }
+        });
+
+        socket.on('join-error', ({ message }) => {
+          document.getElementById('join-error').textContent = message;
+          setTimeout(() => { document.getElementById('join-error').textContent = ''; }, 3000);
+        });
+
+        socket.on('student-face-data', (data) => {
+          if (myRole === 'observer') updateObserverPanel(data);
+          if (myRole === 'observer' || myRole === 'lecturer') {
+            updateStudentAvatar(data);
+            // Compute multimodal signals for VR 3D viz (both observer & lecturer see avatar)
+            updateFaceSignals(data);
+          }
+        });
+
+        socket.on('student-prosody', (data) => {
+          if (myRole === 'observer' || myRole === 'lecturer') updateProsodySignals(data);
+        });
+
+        socket.on('speech-state', ({ role, speaking }) => {
+          if (myRole === 'observer') {
+            const el = document.getElementById('obs-speech-' + role);
+            if (el) {
+              const label = role === 'lecturer' ? 'Lecturer' : 'Student';
+              el.textContent = label + ': ' + (speaking ? '発話中...' : '--');
+              el.style.fontWeight = speaking ? 'bold' : 'normal';
+            }
+          }
+        });
+
+        socket.on('recording-state', ({ recording: rec, startTime: st }) => {
+          if (myRole === 'observer') {
+            document.getElementById('rec-start-btn').disabled = rec;
+            document.getElementById('rec-stop-btn').disabled = !rec;
+            if (rec) startRecTimer(st);
+            else stopRecTimer();
+          } else if (myRole === 'lecturer') {
+            document.getElementById('lec-rec-start').disabled = rec;
+            document.getElementById('lec-rec-stop').disabled = !rec;
+            if (rec) startRecTimer(st);
+            else stopRecTimer();
+          }
+          // Audio capture for transcription (lecturer and student only)
+          if (myRole === 'lecturer' || myRole === 'student') {
+            if (rec) {
+              currentSessionTimestamp = st;
+              startAudioCapture();
+            } else {
+              const samples = stopAudioCapture();
+              if (samples && samples.length > 0 && currentSessionTimestamp) {
+                const sampleRate = vadAudioCtx ? vadAudioCtx.sampleRate : 44100;
+                const wavBuffer = encodeWAV(samples, sampleRate);
+                uploadAudioForTranscription(wavBuffer, currentSessionTimestamp);
+              }
+              currentSessionTimestamp = null;
+            }
+          }
+        });
+
+        socket.on('recording-saved', ({ ok, filename, count }) => {
+          const targetId = myRole === 'lecturer' ? 'lec-rec-result' : 'rec-result';
+          const el = document.getElementById(targetId);
+          if (!el) return;
+          if (ok) {
+            el.textContent = `保存完了: ${filename} (${count} frames)`;
+            el.style.color = '#81c784';
+          } else {
+            el.textContent = '保存失敗';
+            el.style.color = '#ef5350';
+          }
+          setTimeout(() => { el.textContent = ''; }, 8000);
+        });
+
+        // Receive position updates from other players
+        socket.on('player-moved', ({ role, position, rotation }) => {
+          if (role === myRole) return; // ignore own echo
+          const avatar = document.getElementById(`avatar-${role}`);
+          if (avatar && position) {
+            avatar.object3D.position.set(position.x, position.y, position.z);
+          }
+          if (avatar && rotation) {
+            const label = document.getElementById(`label-${role}`);
+            // Rotate the avatar body (not the label) to face the movement direction
+            const semiEl = avatar.querySelector('[semi-avatar]');
+            if (semiEl) {
+              semiEl.object3D.rotation.y = rotation.y;
+            }
+          }
+        });
+
+        socket.on('force-kicked', () => {
+          console.log('[ObsRoom] Force-kicked from room');
+          leaveRoom();
+        });
+
+        // WebRTC signaling handlers
+        socket.on('rtc-offer', ({ from, offer }) => {
+          console.log('[ObsRoom] Received rtc-offer from', from);
+          handleRtcOffer(from, offer);
+        });
+        socket.on('rtc-answer', ({ from, answer }) => {
+          console.log('[ObsRoom] Received rtc-answer from', from);
+          handleRtcAnswer(from, answer);
+        });
+        socket.on('rtc-ice-candidate', ({ from, candidate }) => {
+          handleRtcIceCandidate(from, candidate);
+        });
+
+        socket.on('disconnect', () => { console.log('[ObsRoom] Disconnected'); });
+
+        // ===== Comprehension events (lecturer only) =====
+        socket.on('comprehension:bubble:fire', (payload) => {
+          if (myRole !== 'lecturer') return;
+          renderComprehensionBubble(payload);
+        });
+        socket.on('comprehension:bubble:update', (payload) => {
+          if (myRole !== 'lecturer') return;
+          renderComprehensionBubble(payload);
+        });
+        socket.on('comprehension:bubble:clear', ({ bubbleId }) => {
+          if (myRole !== 'lecturer') return;
+          const el = document.getElementById('comp-bubble');
+          if (el && el.dataset.bubbleId === bubbleId) {
+            el.style.display = 'none';
+            el.classList.remove('urgent');
+            el.dataset.bubbleId = '';
+          }
+        });
+        socket.on('comprehension:overview', (payload) => {
+          if (myRole !== 'lecturer') return;
+          if (!payload.students || !payload.students.length) return;
+          const s = payload.students[0];
+          updateComprehensionDebug({ satisfaction: s.satisfaction, substates: s.substates });
+        });
+      }
+
+      // ===== Comprehension HUD render =====
+      const SUBSTATE_KEYS = ['understanding', 'agreement', 'attention', 'confidence',
+                             'confusion', 'disagreement', 'uncertainty'];
+
+      function renderComprehensionBubble(p) {
+        const el = document.getElementById('comp-bubble');
+        if (!el) return;
+        el.dataset.bubbleId = p.bubbleId;
+        el.style.borderColor = p.bubble.color || '#444';
+        el.classList.toggle('urgent', p.priority === 'urgent');
+        document.getElementById('comp-bubble-text').textContent = p.bubble.text || '';
+        document.getElementById('comp-bubble-text').style.color = p.bubble.color || '#fff';
+        document.getElementById('comp-bubble-label').textContent = p.bubble.label || '';
+        document.getElementById('comp-bubble-student').textContent = p.studentName || '';
+        document.getElementById('comp-bubble-time').textContent = formatBubbleTime(p.ts);
+        const sat = (p.satisfaction ?? 0).toFixed(2);
+        const conf = (p.confidence ?? 0).toFixed(2);
+        const sub = p.substates || {};
+        // 最も寄与した下位状態（上位2件）を short-form で見せる
+        const labels = {
+          understanding: '理解', agreement: '同意', attention: '注意', confidence: '確信',
+          confusion: '混乱', disagreement: '不同意', uncertainty: '不確実',
+        };
+        const entries = Object.entries(sub)
+          .filter(([_, v]) => typeof v === 'number')
+          .sort((a, b) => Math.abs(b[1] - 0.5) - Math.abs(a[1] - 0.5))
+          .slice(0, 3)
+          .map(([k, v]) => `${labels[k] || k}:${v.toFixed(2)}`)
+          .join('  ');
+        document.getElementById('comp-bubble-axes').textContent =
+          `納得度:${sat}  conf:${conf}  ${entries}`;
+        el.style.display = 'block';
+      }
+
+      function updateComprehensionDebug(snap) {
+        if (!snap) return;
+        const sat = typeof snap.satisfaction === 'number' ? snap.satisfaction : 0;
+        const satVal = document.getElementById('comp-sat-val');
+        const satBar = document.getElementById('comp-sat-bar');
+        if (satVal) satVal.textContent = sat.toFixed(2);
+        if (satBar) {
+          satBar.style.width = `${Math.round(sat * 100)}%`;
+          // 納得度の色を [赤→黄→緑] でグラデ
+          const hue = Math.round(sat * 120);  // 0=赤 60=黄 120=緑
+          satBar.style.background = `hsl(${hue}, 70%, 50%)`;
+        }
+        const sub = snap.substates || {};
+        for (const k of SUBSTATE_KEYS) {
+          const v = typeof sub[k] === 'number' ? sub[k] : 0;
+          const valEl = document.getElementById(`comp-${k}-val`);
+          const barEl = document.getElementById(`comp-${k}-bar`);
+          if (valEl) valEl.textContent = v.toFixed(2);
+          if (barEl) barEl.style.width = `${Math.round(v * 100)}%`;
+        }
+      }
+
+      function formatBubbleTime(iso) {
+        try { return new Date(iso).toLocaleTimeString('ja-JP', { hour12: false }); }
+        catch { return ''; }
+      }
+
+      function ackComprehensionBubble() {
+        const el = document.getElementById('comp-bubble');
+        const bubbleId = el && el.dataset.bubbleId;
+        if (!bubbleId || !socket) return;
+        socket.emit('comprehension:bubble:ack', { bubbleId, ts: new Date().toISOString() }, (resp) => {
+          // ack 失敗は通常「バブルが既に自動クリアされてた」だけ。debug レベルに下げる。
+          if (resp && !resp.ok) console.debug('[Comprehension] ack ignored (bubble already cleared):', resp);
+        });
+      }
+
+      function dismissComprehensionBubble() {
+        const el = document.getElementById('comp-bubble');
+        const bubbleId = el && el.dataset.bubbleId;
+        if (!bubbleId || !socket) return;
+        socket.emit('comprehension:bubble:dismiss',
+          { bubbleId, reason: 'false_positive', ts: new Date().toISOString() },
+          (resp) => {
+            if (resp && !resp.ok) console.debug('[Comprehension] dismiss ignored (bubble already cleared):', resp);
+          });
+      }
+
+      // ========== Lobby ==========
+      function updateLobbyState(state) {
+        for (const role of ['lecturer', 'student', 'observer']) {
+          const el = document.getElementById(`status-${role}`);
+          const btn = document.querySelector(`.role-btn.${role}`);
+          const forceBtn = document.getElementById(`force-leave-${role}`);
+          if (state[role]) {
+            el.textContent = `使用中: ${state[role].name}`;
+            el.classList.add('occupied');
+            if (!myRole) {
+              btn.disabled = true;
+              forceBtn.style.display = 'inline-block';
+            }
+          } else {
+            el.textContent = '空き';
+            el.classList.remove('occupied');
+            if (!myRole) btn.disabled = false;
+            forceBtn.style.display = 'none';
+          }
+        }
+      }
+
+      function joinRoom(role) {
+        const name = document.getElementById('name-input').value.trim();
+        if (!name) {
+          document.getElementById('join-error').textContent = '名前を入力してください';
+          return;
+        }
+        socket.emit('join', { role, name });
+
+        // Wait for room-state to confirm join
+        socket.once('room-state', (state) => {
+          if (state[role] && state[role].name === name) {
+            myRole = role;
+            updateAvatars(state);  // Synchronous: hide own avatar before async enterRoom
+            enterRoom(role, name).then(() => {
+              setupWebRTCConnections(state);  // Initiate WebRTC after vadStream is ready
+            });
+          }
+        });
+      }
+
+      async function enterRoom(role, name) {
+        document.getElementById('lobby').style.display = 'none';
+        document.getElementById('hud-role').style.display = 'block';
+        document.getElementById('hud-role').textContent = `${role.toUpperCase()} - ${name}`;
+        document.getElementById('leave-btn').style.display = 'block';
+        document.getElementById('participants-hud').style.display = 'block';
+        // 納得度デバッグパネル: 先生のみ表示
+        document.getElementById('comp-debug').style.display = (role === 'lecturer') ? 'block' : 'none';
+        // Lecturer 用の小型録画コントロール（Observer 不在でも録画できるように）
+        document.getElementById('lec-rec-controls').style.display = (role === 'lecturer') ? 'block' : 'none';
+
+        // Move player rig to role position (use object3D directly to avoid movement-controls override)
+        const rig = document.getElementById('rig');
+        const pos = avatarPositions[role];
+        if (rig && pos) {
+          rig.object3D.position.set(pos.x, 0, pos.z);
+          // Also update A-Frame attribute for consistency
+          rig.setAttribute('position', { x: pos.x, y: 0, z: pos.z });
+        }
+
+        // Start heartbeat
+        if (heartbeatInterval) clearInterval(heartbeatInterval);
+        heartbeatInterval = setInterval(() => {
+          if (socket && socket.connected) socket.emit('heartbeat');
+        }, 5000);
+
+        // Start position sync (10Hz)
+        if (positionSyncInterval) clearInterval(positionSyncInterval);
+        positionSyncInterval = setInterval(() => {
+          if (!socket || !socket.connected || !myRole) return;
+          const rigEl = document.getElementById('rig');
+          const camEl = document.getElementById('player');
+          if (!rigEl) return;
+          const p = rigEl.object3D.position;
+          const r = camEl ? camEl.object3D.rotation : rigEl.object3D.rotation;
+          socket.emit('player-move', {
+            position: { x: p.x, y: p.y, z: p.z },
+            rotation: { y: r.y }
+          });
+        }, 100);
+
+        // Role-specific UI (synchronous, before async initVAD)
+        if (role === 'student') {
+          document.getElementById('start-calibration').style.display = 'block';
+          document.getElementById('start-calibration').addEventListener('click', startCalibration);
+          initMediaPipe();
+        } else if (role === 'observer') {
+          document.getElementById('observer-panel').style.display = 'block';
+          buildSignalTable();
+        }
+
+        // All roles: show device settings and enumerate
+        document.getElementById('device-settings-btn').style.display = 'block';
+        enumerateDevices();
+
+        // All roles: init VAD (for voice activity detection + WebRTC audio source)
+        await initVAD();
+      }
+
+      function forceLeave(role) {
+        if (socket) socket.emit('force-leave', { role });
+      }
+
+      function leaveRoom() {
+        if (socket) socket.emit('leave');
+        // Stop heartbeat and position sync
+        if (heartbeatInterval) { clearInterval(heartbeatInterval); heartbeatInterval = null; }
+        if (positionSyncInterval) { clearInterval(positionSyncInterval); positionSyncInterval = null; }
+        // Stop MediaPipe if student
+        if (faceSendInterval) { clearInterval(faceSendInterval); faceSendInterval = null; }
+        removeAllPeerConnections();
+        destroyVAD();
+        stopRecTimer();
+        myRole = null;
+        // Reset UI
+        document.getElementById('lobby').style.display = 'flex';
+        document.getElementById('hud-role').style.display = 'none';
+        document.getElementById('leave-btn').style.display = 'none';
+        document.getElementById('start-calibration').style.display = 'none';
+        document.getElementById('observer-panel').style.display = 'none';
+        document.getElementById('participants-hud').style.display = 'none';
+        document.getElementById('device-settings-btn').style.display = 'none';
+        document.getElementById('device-panel').style.display = 'none';
+        document.getElementById('comp-debug').style.display = 'none';
+        document.getElementById('lec-rec-controls').style.display = 'none';
+        const cb = document.getElementById('comp-bubble');
+        if (cb) { cb.style.display = 'none'; cb.dataset.bubbleId = ''; cb.classList.remove('urgent'); }
+      }
+
+      // ========== Participants HUD ==========
+      function updateParticipantsHud(state) {
+        const el = document.getElementById('participants-hud');
+        const colors = { lecturer: '#42a5f5', student: '#66bb6a', observer: '#ab47bc' };
+        const labels = { lecturer: 'Lecturer', student: 'Student', observer: 'Observer' };
+        let html = '';
+        for (const role of ['lecturer', 'student', 'observer']) {
+          if (state[role]) {
+            html += `<div class="participant-row"><span class="participant-dot" style="background:${colors[role]}"></span> ${labels[role]}: ${state[role].name}</div>`;
+          }
+        }
+        el.innerHTML = html || '<div style="color:#888">参加者なし</div>';
+      }
+
+      // ========== Avatars ==========
+      const avatarPositions = {
+        lecturer: { x: -5, y: 0, z: 5 },
+        student: { x: -1, y: 0, z: 7 },
+        observer: { x: 1, y: 0, z: 9 },
+      };
+
+      // Track which remote avatars have been initialized (to set default position only once)
+      const avatarInitialized = { lecturer: false, student: false, observer: false };
+
+      function updateAvatars(state) {
+        for (const role of ['lecturer', 'student', 'observer']) {
+          const avatar = document.getElementById(`avatar-${role}`);
+          const label = document.getElementById(`label-${role}`);
+          if (!avatar) continue;
+          if (role === myRole) {
+            avatar.setAttribute('visible', false);
+            continue;
+          }
+          if (state[role]) {
+            avatar.setAttribute('visible', true);
+            label.setAttribute('text', 'value', state[role].name);
+            // Set default position only on first appearance (will be updated by player-moved)
+            if (!avatarInitialized[role]) {
+              const pos = avatarPositions[role];
+              avatar.object3D.position.set(pos.x, pos.y, pos.z);
+              avatarInitialized[role] = true;
+            }
+          } else {
+            avatar.setAttribute('visible', false);
+            avatarInitialized[role] = false; // reset for next join
+          }
+        }
+      }
+
+      // ========== MediaPipe (Student only) ==========
+      async function initMediaPipe() {
+        const faceMesh = new FaceMesh({
+          locateFile: (file) => `mediapipe/face_mesh/${file}`
+        });
+        faceMesh.setOptions({
+          maxNumFaces: 1, refineLandmarks: true,
+          minDetectionConfidence: 0.5, minTrackingConfidence: 0.5
+        });
+        faceMesh.onResults(onFaceMeshResults);
+
+        const video = document.getElementById('face-video-mediapipe');
+        video.style.display = 'block';
+        const camera = new Camera(video, {
+          onFrame: async () => { await faceMesh.send({ image: video }); },
+          width: 640, height: 480
+        });
+        await camera.start();
+        console.log('[ObsRoom] MediaPipe FaceMesh initialized');
+
+        // Restore calibration from localStorage
+        try {
+          const stored = JSON.parse(localStorage.getItem('gazeCalibration'));
+          if (stored && stored.wx && stored.wy && stored.screenWidth === window.innerWidth && stored.screenHeight === window.innerHeight) {
+            calibrationModel = { wx: stored.wx, wy: stored.wy };
+            calibrationState = 'CALIBRATED';
+            document.getElementById('start-calibration').textContent = '再キャリブレーション';
+            console.log('[ObsRoom] Restored calibration from localStorage');
+          }
+        } catch (e) { /* ignore */ }
+
+        // Send face data at 10Hz
+        faceSendInterval = setInterval(() => {
+          if (latestFaceData && socket && socket.connected) {
+            socket.emit('face-data', latestFaceData);
+          }
+        }, 100);
+      }
+
+      function onFaceMeshResults(results) {
+        if (!results.multiFaceLandmarks || results.multiFaceLandmarks.length === 0) {
+          if (calibrationState === 'COLLECTING' || calibrationState === 'SAMPLING') {
+            document.getElementById('calib-face-warning').style.display = 'block';
+          }
+          return;
+        }
+        const landmarks = results.multiFaceLandmarks[0];
+        const now = Date.now();
+
+        // Calibration mode
+        if (calibrationState === 'SAMPLING') {
+          const iris = extractIrisRatios(landmarks);
+          if (iris) collectCalibSample(iris);
+          return;
+        }
+        if (['COLLECTING', 'PREPARING', 'PROCESSING'].includes(calibrationState)) {
+          document.getElementById('calib-face-warning').style.display = 'none';
+          return;
+        }
+
+        // Normal tracking
+        detectNod(landmarks, now);
+        detectHeadShake(currentHeadYaw, now);
+        const emotionResult = detectEmotion(landmarks);
+        const gaze = estimateGaze(landmarks);
+        detectBodyWithdrawal(landmarks, now);
+        detectEyeWandering(landmarks, now);
+
+        const nodActive = (nodPhase !== 'IDLE') || (now < nodActiveUntil);
+        latestFaceData = {
+          gaze: gaze ? { x: gaze.x, y: gaze.y } : null,
+          nod: nodPhase !== 'IDLE',
+          nodActive,                 // true during MOVING + NOD_TAIL_MS after confirmation — exclude from wobble/gaze
+          emotion: emotionResult.emotion,
+          emotionScores: emotionResult.scores || null,  // {smile, surprise, sad, angry, confused}
+          nodCount,
+          headPitch: currentHeadPitch,
+          headYaw: currentHeadYaw,
+          headShakeActive,
+          headShakeCount,
+          bodyWithdrawal: withdrawalActive,
+          bodyWithdrawalCount: bodyWithdrawalCount,
+          eyeWandering: eyeWandering,
+          eyeWanderingCount: eyeWanderingCount,
+          timestamp: now,
+        };
+      }
+
+      // ========== Student Avatar Update ==========
+      let lastNodCount = 0;
+
+      function updateStudentAvatar(data) {
+        const avatarEl = document.querySelector('#avatar-student [semi-avatar]');
+        if (avatarEl) {
+          const comp = avatarEl.components['semi-avatar'];
+          if (comp) {
+            // Continuous head pose sync
+            if (data.headPitch !== undefined) {
+              comp.setHeadPose(data.headPitch, data.headYaw);
+            }
+            // Nod impulse animation on new nod detection
+            if (data.nodCount > lastNodCount) {
+              comp.playNod();
+            }
+          }
+        }
+        lastNodCount = data.nodCount || 0;
+        // Update 3D emotion label
+        const emoText = document.getElementById('student-emotion-3d');
+        if (emoText) {
+          const emoji = emotionEmojis[data.emotion] || '😐';
+          emoText.setAttribute('text', 'value', emoji);
+        }
+      }
+
+      // ========== Multimodal Signal Panel ==========
+      // Catalog of signals derived from the user-specified evaluation table.
+      // direction: '+' positive cue, '-' negative cue, '±' context-dependent
+      // source: 'auto' (computed), 'manual' (observer toggle), 'asr' (requires speech recognition)
+      const SIGNAL_CATALOG = [
+        { id: 'lang-agree',     cat: '言語', name: '同意表現',           dir: '+', source: 'asr' },
+        { id: 'lang-disagree',  cat: '言語', name: '不同意・反論表現',     dir: '-', source: 'asr' },
+        { id: 'lang-understand',cat: '言語', name: '理解・確認応答',       dir: '+', source: 'asr' },
+        { id: 'lang-repair',    cat: '言語', name: '聞き返し・修復要求',   dir: '-', source: 'asr' },
+        { id: 'lang-hedge',     cat: '言語', name: '不確実性・hedge',     dir: '-', source: 'asr' },
+        { id: 'lang-stance',    cat: '言語', name: 'スタンス・意見変化',   dir: '+', source: 'asr' },
+        { id: 'lang-commit',    cat: '言語', name: '行動意図・コミット',   dir: '+', source: 'asr' },
+        { id: 'dial-question',  cat: '対話', name: '質問・根拠要求',       dir: '-', source: 'asr' },
+        { id: 'dial-delay',     cat: '対話', name: '応答遅延・沈黙',       dir: '±', source: 'auto' },
+        { id: 'voice-f0',       cat: '音声', name: '基本周波数 F0',       dir: '±', source: 'auto' },
+        { id: 'voice-energy',   cat: '音声', name: '音量・エネルギー',     dir: '±', source: 'auto' },
+        { id: 'voice-rate',     cat: '音声', name: '発話速度',             dir: '±', source: 'auto' },
+        { id: 'voice-pause',    cat: '音声', name: 'ポーズ長',             dir: '-', source: 'auto' },
+        { id: 'voice-confidence',cat: '音声',name: '確信度プロソディ',     dir: '±', source: 'auto' },
+        { id: 'face-smile',     cat: '表情', name: '笑顔 (AU6/12)',       dir: '+', source: 'auto' },
+        { id: 'face-brow',      cat: '表情', name: '眉ひそめ (AU4)',      dir: '-', source: 'auto' },
+        { id: 'face-confused',  cat: '表情', name: '困惑 (AU4+7)',        dir: '-', source: 'auto' },
+        { id: 'head-nod',       cat: '頭部', name: 'うなずき',             dir: '+', source: 'auto' },
+        { id: 'head-shake',     cat: '頭部', name: '首振り',               dir: '-', source: 'auto' },
+        { id: 'gaze-target',    cat: '視線', name: '話者・対象への視線',   dir: '+', source: 'auto' },
+        { id: 'post-lean',      cat: '姿勢', name: '前傾・身体向き',       dir: '+', source: 'auto' },
+      ];
+
+      // Latest signal values keyed by id. value: 'pos' | 'neg' | 'warn' | 'idle' | 'manual'
+      // detail: short label shown in state cell (e.g. "120Hz", "ON", "高")
+      const signalState = {};
+
+      function buildSignalTable() {
+        const tbody = document.getElementById('signal-tbody');
+        if (!tbody) return;
+        const dirClass = (d) => d === '+' ? 'dir-pos' : d === '-' ? 'dir-neg' : 'dir-ctx';
+        tbody.innerHTML = SIGNAL_CATALOG.map(s => `
+          <tr id="sig-row-${s.id}">
+            <td>${s.cat}</td>
+            <td>${s.name}</td>
+            <td class="sig-dir ${dirClass(s.dir)}">${s.dir}</td>
+            <td class="sig-state state-${s.source === 'asr' ? 'manual' : 'idle'}" id="sig-state-${s.id}">${s.source === 'asr' ? '言語処理待' : '--'}</td>
+          </tr>
+        `).join('');
+        SIGNAL_CATALOG.forEach(s => {
+          signalState[s.id] = { state: s.source === 'asr' ? 'manual' : 'idle', detail: s.source === 'asr' ? '言語処理待' : '--' };
+        });
+      }
+
+      function setSignal(id, state, detail) {
+        const prev = signalState[id] || { state: 'idle', detail: '--' };
+        signalState[id] = { state, detail };
+
+        // 2D panel update (observer only — Lecturer has no signal-table DOM)
+        const cell = document.getElementById(`sig-state-${id}`);
+        if (cell) {
+          cell.textContent = detail;
+          cell.className = `sig-state state-${state}`;
+          if (prev.state !== state && (state === 'pos' || state === 'neg' || state === 'warn')) {
+            const row = document.getElementById(`sig-row-${id}`);
+            if (row) {
+              row.classList.add('signal-fire');
+              setTimeout(() => row.classList.remove('signal-fire'), 350);
+            }
+          }
+        }
+
+        // 3D VR visualization — only on transition to/from active states
+        if (prev.state !== state) scheduleSignal3DRefresh();
+      }
+
+      // ----- 3D VR badge rendering -----
+      // Map signals to emoji + which state values activate them in 3D.
+      // Only "alert-worthy" auto-detected signals appear in VR (not raw F0/energy/rate which
+      // are informational only — those stay in the 2D panel).
+      const SIGNAL_3D_MAPPING = {
+        'face-smile':       { emoji: '😊', polarity: 'pos', show: ['pos'] },
+        'head-nod':         { emoji: '👍', polarity: 'pos', show: ['pos'] },
+        'gaze-target':      { emoji: '👀', polarity: 'pos', show: ['pos'] },
+        'post-lean':        { emoji: '↗',  polarity: 'pos', show: ['pos'] },
+        'face-brow':        { emoji: '😠', polarity: 'neg', show: ['neg'] },
+        'face-confused':    { emoji: '😕', polarity: 'neg', show: ['neg'] },
+        'head-shake':       { emoji: '👎', polarity: 'neg', show: ['neg'] },
+        'gaze-target-neg':  { emoji: '👁',  polarity: 'neg', show: ['neg'], from: 'gaze-target' },
+        'post-lean-neg':    { emoji: '↩',  polarity: 'neg', show: ['neg'], from: 'post-lean' },
+        'voice-pause':      { emoji: '🤐', polarity: 'neg', show: ['warn', 'neg'] },
+        'voice-confidence': { emoji: '〰',  polarity: 'neg', show: ['neg', 'warn'] },
+        // Language signals (from librosa + GPT-4o-mini analysis)
+        'lang-agree':       { emoji: '✅', polarity: 'pos', show: ['pos'] },
+        'lang-understand':  { emoji: '💡', polarity: 'pos', show: ['pos'] },
+        'lang-stance':      { emoji: '🔄', polarity: 'pos', show: ['pos'] },
+        'lang-commit':      { emoji: '🎯', polarity: 'pos', show: ['pos'] },
+        'lang-disagree':    { emoji: '❌', polarity: 'neg', show: ['neg'] },
+        'lang-repair':      { emoji: '❓', polarity: 'neg', show: ['neg'] },
+        'lang-hedge':       { emoji: '🤔', polarity: 'neg', show: ['neg'] },
+      };
+
+      let _signal3dPending = false;
+      function scheduleSignal3DRefresh() {
+        if (_signal3dPending) return;
+        _signal3dPending = true;
+        requestAnimationFrame(() => {
+          _signal3dPending = false;
+          renderSignals3D();
+        });
+      }
+
+      function renderSignals3D() {
+        const posEl = document.getElementById('student-signals-3d-pos');
+        const negEl = document.getElementById('student-signals-3d-neg');
+        if (!posEl || !negEl) return;
+        const posIcons = [];
+        const negIcons = [];
+        for (const [key, cfg] of Object.entries(SIGNAL_3D_MAPPING)) {
+          const lookupId = cfg.from || key;
+          const s = signalState[lookupId];
+          if (!s) continue;
+          if (!cfg.show.includes(s.state)) continue;
+          (cfg.polarity === 'pos' ? posIcons : negIcons).push(cfg.emoji);
+        }
+        posEl.setAttribute('text', 'value', posIcons.join(' '));
+        negEl.setAttribute('text', 'value', negIcons.join(' '));
+      }
+
+      // Rolling baselines for prosody (so we can compare current sample to the speaker's own range)
+      const prosodyBaseline = {
+        pitch: [], energy: [], rate: [],
+      };
+      const BASELINE_MAX = 30;  // ~30s of 1Hz samples
+      function pushBaseline(arr, v) {
+        if (v === null || v === undefined || !isFinite(v)) return;
+        arr.push(v);
+        while (arr.length > BASELINE_MAX) arr.shift();
+      }
+      function baselineMean(arr) {
+        if (arr.length === 0) return null;
+        return arr.reduce((s, x) => s + x, 0) / arr.length;
+      }
+      function baselineStd(arr) {
+        if (arr.length < 3) return null;
+        const m = baselineMean(arr);
+        let v = 0;
+        for (const x of arr) v += (x - m) * (x - m);
+        return Math.sqrt(v / arr.length);
+      }
+
+      // Update facial / head / gaze / posture signals from streaming face-data
+      function updateFaceSignals(data) {
+        // Facial — derived from emotion scores when available, else categorical
+        const scores = data.emotionScores || {};
+        const smile = parseFloat(scores.smile || 0);
+        const angry = parseFloat(scores.angry || 0);
+        const confused = parseFloat(scores.confused || 0);
+
+        if (smile > 0.45 || data.emotion === 'happy') {
+          setSignal('face-smile', 'pos', smile > 0 ? `ON (${smile.toFixed(2)})` : 'ON');
+        } else {
+          setSignal('face-smile', 'idle', '--');
+        }
+        if (angry > 0.40) {
+          setSignal('face-brow', 'neg', `ON (${angry.toFixed(2)})`);
+        } else if (data.emotion === 'angry') {
+          setSignal('face-brow', 'neg', 'ON');
+        } else {
+          setSignal('face-brow', 'idle', '--');
+        }
+        if (confused > 0.40 || data.emotion === 'confused') {
+          setSignal('face-confused', 'neg', confused > 0 ? `ON (${confused.toFixed(2)})` : 'ON');
+        } else {
+          setSignal('face-confused', 'idle', '--');
+        }
+
+        // Head — nod & shake
+        if (data.nodActive || data.nod) {
+          setSignal('head-nod', 'pos', `ON (${data.nodCount || 0})`);
+        } else {
+          setSignal('head-nod', 'idle', `(${data.nodCount || 0})`);
+        }
+        if (data.headShakeActive) {
+          setSignal('head-shake', 'neg', `ON (${data.headShakeCount || 0})`);
+        } else {
+          setSignal('head-shake', 'idle', `(${data.headShakeCount || 0})`);
+        }
+
+        // Gaze — eyeWandering active = looking away; stable = on target
+        if (data.gaze) {
+          if (data.eyeWandering) {
+            setSignal('gaze-target', 'neg', '逸脱');
+          } else {
+            setSignal('gaze-target', 'pos', '注視');
+          }
+        } else {
+          setSignal('gaze-target', 'idle', '--');
+        }
+
+        // Posture — bodyWithdrawal = leaning away (neg). Stable engagement = pos.
+        if (data.bodyWithdrawal) {
+          setSignal('post-lean', 'neg', `後退 (${data.bodyWithdrawalCount || 0})`);
+        } else {
+          setSignal('post-lean', 'pos', '関与');
+        }
+      }
+
+      // Update voice signals from prosody samples (1Hz)
+      function updateProsodySignals(p) {
+        // Update baselines (only when speaking — silence yields null pitch and ~0 rms)
+        if (p.speaking) {
+          pushBaseline(prosodyBaseline.pitch, p.pitchHzMean);
+          pushBaseline(prosodyBaseline.energy, p.intensityRms);
+          pushBaseline(prosodyBaseline.rate, p.speechRateProxy);
+        }
+
+        // F0 — show absolute pitch in Hz; classify high/low vs baseline
+        if (p.pitchHzMean !== null && p.pitchHzMean !== undefined) {
+          const mean = baselineMean(prosodyBaseline.pitch);
+          const std = baselineStd(prosodyBaseline.pitch);
+          let label = `${p.pitchHzMean.toFixed(0)}Hz`;
+          let state = 'warn';
+          if (mean !== null && std !== null && std > 0) {
+            const z = (p.pitchHzMean - mean) / std;
+            if (z > 1.0) { label += ' ↑'; state = 'warn'; }
+            else if (z < -1.0) { label += ' ↓'; state = 'warn'; }
+            else { state = 'pos'; }
+          }
+          setSignal('voice-f0', state, label);
+        } else if (!p.speaking) {
+          setSignal('voice-f0', 'idle', '--');
+        }
+
+        // Energy
+        if (p.intensityRms !== null && p.intensityRms !== undefined) {
+          const e = p.intensityRms;
+          let label = e.toFixed(3);
+          let state = 'idle';
+          if (p.speaking) {
+            const mean = baselineMean(prosodyBaseline.energy);
+            if (mean !== null && e > mean * 1.2) { label += ' ↑'; state = 'pos'; }
+            else if (mean !== null && e < mean * 0.6) { label += ' ↓'; state = 'warn'; }
+            else { state = 'pos'; }
+          }
+          setSignal('voice-energy', state, label);
+        }
+
+        // Speech rate (peaks/sec)
+        if (p.speechRateProxy !== null && p.speechRateProxy !== undefined) {
+          const r = p.speechRateProxy;
+          let label = `${r.toFixed(1)}/s`;
+          let state = 'idle';
+          if (p.speaking) {
+            const mean = baselineMean(prosodyBaseline.rate);
+            if (mean !== null && r > mean * 1.3) { label += ' 速'; state = 'warn'; }
+            else if (mean !== null && r < mean * 0.7) { label += ' 遅'; state = 'warn'; }
+            else { state = 'pos'; }
+          }
+          setSignal('voice-rate', state, label);
+        }
+
+        // Pause — sustained pauseMs > 1500 = hesitation; > 2500 = silence
+        const pauseMs = p.pauseMs || 0;
+        if (pauseMs >= 2500) {
+          setSignal('voice-pause', 'neg', `${(pauseMs / 1000).toFixed(1)}s`);
+          setSignal('dial-delay', 'neg', `沈黙 ${(pauseMs / 1000).toFixed(1)}s`);
+        } else if (pauseMs >= 1500) {
+          setSignal('voice-pause', 'warn', `${(pauseMs / 1000).toFixed(1)}s`);
+          setSignal('dial-delay', 'warn', `${(pauseMs / 1000).toFixed(1)}s`);
+        } else if (pauseMs > 0) {
+          setSignal('voice-pause', 'idle', `${pauseMs}ms`);
+          setSignal('dial-delay', 'idle', `${pauseMs}ms`);
+        }
+
+        // Confidence prosody: ending elongation high + pitch variability low → hedging / low confidence
+        // endingElongationMs ∈ [0, 600], pitchHzStd low when steady
+        const endMs = p.endingElongationMs || 0;
+        const stdHz = p.pitchHzStd;
+        if (endMs >= 250) {
+          setSignal('voice-confidence', 'neg', `語尾伸 ${endMs.toFixed(0)}ms`);
+        } else if (stdHz !== null && stdHz !== undefined && p.speaking) {
+          if (stdHz < 8) {
+            setSignal('voice-confidence', 'pos', `安定 ${stdHz.toFixed(1)}Hz`);
+          } else if (stdHz > 30) {
+            setSignal('voice-confidence', 'warn', `変動 ${stdHz.toFixed(1)}Hz`);
+          } else {
+            setSignal('voice-confidence', 'pos', `${stdHz.toFixed(1)}Hz`);
+          }
+        } else if (!p.speaking) {
+          setSignal('voice-confidence', 'idle', '--');
+        }
+      }
+
+      // ========== Observer Panel ==========
+      function updateObserverPanel(data) {
+        // Emotion
+        const emoji = emotionEmojis[data.emotion] || '😐';
+        const name = emotionNames[data.emotion] || '不明';
+        document.getElementById('obs-emotion').textContent = emoji;
+        document.getElementById('obs-emotion-label').textContent = name;
+
+        // Nod count
+        document.getElementById('obs-nod-count').textContent = data.nodCount || 0;
+
+        // Gaze minimap
+        if (data.gaze) {
+          const minimap = document.getElementById('gaze-minimap');
+          const dot = document.getElementById('gaze-dot');
+          const pctX = (data.gaze.x / window.innerWidth) * 100;
+          const pctY = (data.gaze.y / window.innerHeight) * 100;
+          dot.style.left = Math.max(0, Math.min(100, pctX)) + '%';
+          dot.style.top = Math.max(0, Math.min(100, pctY)) + '%';
+        }
+
+        // Body withdrawal
+        const wdEl = document.getElementById('obs-withdrawal');
+        if (wdEl) {
+          const active = data.bodyWithdrawal ? '検出中' : '--';
+          wdEl.textContent = `後退: ${active} (${data.bodyWithdrawalCount || 0}回)`;
+          wdEl.style.fontWeight = data.bodyWithdrawal ? 'bold' : 'normal';
+        }
+
+        // Eye wandering
+        const ewEl = document.getElementById('obs-eye-wandering');
+        if (ewEl) {
+          const active = data.eyeWandering ? '検出中' : '--';
+          ewEl.textContent = `視線不安定: ${active} (${data.eyeWanderingCount || 0}回)`;
+          ewEl.style.fontWeight = data.eyeWandering ? 'bold' : 'normal';
+        }
+
+        // Note: multimodal signals (updateFaceSignals) are computed once at the socket
+        // handler level (for both observer & lecturer) so 3D VR badges are kept in sync.
+      }
+
+      // ========== Device Management ==========
+      let selectedMicId = '';
+      let selectedSpeakerId = '';
+
+      function toggleDevicePanel() {
+        const panel = document.getElementById('device-panel');
+        const isHidden = getComputedStyle(panel).display === 'none';
+        panel.style.display = isHidden ? 'block' : 'none';
+        if (isHidden) enumerateDevices();
+      }
+
+      async function enumerateDevices() {
+        try {
+          const devices = await navigator.mediaDevices.enumerateDevices();
+          const micSelect = document.getElementById('mic-select');
+          const speakerSelect = document.getElementById('speaker-select');
+
+          const currentMicVal = micSelect.value;
+          const currentSpeakerVal = speakerSelect.value;
+
+          micSelect.innerHTML = '';
+          speakerSelect.innerHTML = '';
+
+          const mics = devices.filter(d => d.kind === 'audioinput');
+          const speakers = devices.filter(d => d.kind === 'audiooutput');
+
+          mics.forEach((d, i) => {
+            const opt = document.createElement('option');
+            opt.value = d.deviceId;
+            opt.textContent = d.label || `マイク ${i + 1}`;
+            if (selectedMicId && d.deviceId === selectedMicId) opt.selected = true;
+            micSelect.appendChild(opt);
+          });
+
+          speakers.forEach((d, i) => {
+            const opt = document.createElement('option');
+            opt.value = d.deviceId;
+            opt.textContent = d.label || `スピーカー ${i + 1}`;
+            if (selectedSpeakerId && d.deviceId === selectedSpeakerId) opt.selected = true;
+            speakerSelect.appendChild(opt);
+          });
+
+          if (speakers.length === 0) {
+            const opt = document.createElement('option');
+            opt.textContent = '(変更不可)';
+            speakerSelect.appendChild(opt);
+            speakerSelect.disabled = true;
+          } else {
+            speakerSelect.disabled = false;
+          }
+        } catch (e) {
+          console.warn('[ObsRoom] Device enumeration failed:', e.message);
+        }
+      }
+
+      async function switchMicrophone() {
+        const micSelect = document.getElementById('mic-select');
+        selectedMicId = micSelect.value;
+        console.log('[ObsRoom] Switching microphone to:', selectedMicId);
+        // Restart VAD with new device
+        destroyVAD();
+        await initVAD(selectedMicId);
+        // Replace audio track on existing WebRTC connections
+        replaceAudioTrackOnPeers();
+      }
+
+      function switchSpeaker() {
+        const speakerSelect = document.getElementById('speaker-select');
+        selectedSpeakerId = speakerSelect.value;
+        console.log('[ObsRoom] Switching speaker to:', selectedSpeakerId);
+        // Set sink on any audio/video elements if setSinkId is supported
+        const audioElements = document.querySelectorAll('audio, video');
+        audioElements.forEach(el => {
+          if (typeof el.setSinkId === 'function') {
+            el.setSinkId(selectedSpeakerId).catch(e => {
+              console.warn('[ObsRoom] setSinkId failed:', e.message);
+            });
+          }
+        });
+      }
+
+      // ========== Audio Capture for Transcription ==========
+      let audioRecordingActive = false;
+      let pcmRecorderNode = null;
+      let pcmSamples = [];
+      let currentSessionTimestamp = null;
+
+      function getBasePath() {
+        const idx = location.pathname.indexOf('/fujii/');
+        return idx > 0 ? location.pathname.substring(0, idx) : '';
+      }
+
+      function startAudioCapture() {
+        if (!vadStream) {
+          console.warn('[ObsRoom] startAudioCapture: vadStream missing — mic permission denied?');
+          return;
+        }
+        if (!vadAudioCtx) {
+          console.warn('[ObsRoom] startAudioCapture: vadAudioCtx missing');
+          return;
+        }
+        if (audioRecordingActive) {
+          console.warn('[ObsRoom] startAudioCapture: already active (stale state?), resetting');
+          stopAudioCapture();
+        }
+        pcmSamples = [];
+        audioRecordingActive = true;
+
+        // AudioContext が autoplay policy で suspended の場合は resume
+        if (vadAudioCtx.state === 'suspended') {
+          vadAudioCtx.resume().catch(e => console.warn('[ObsRoom] resume failed:', e));
+        }
+
+        // ScriptProcessorNode to capture raw PCM from the mic stream
+        const bufSize = 4096;
+        pcmRecorderNode = vadAudioCtx.createScriptProcessor(bufSize, 1, 1);
+        const source = vadAudioCtx.createMediaStreamSource(vadStream);
+        source.connect(pcmRecorderNode);
+        pcmRecorderNode.connect(vadAudioCtx.destination);
+
+        let frameCount = 0;
+        pcmRecorderNode.onaudioprocess = (e) => {
+          if (!audioRecordingActive) return;
+          const input = e.inputBuffer.getChannelData(0);
+          pcmSamples.push(new Float32Array(input));
+          frameCount++;
+          // 最初の callback で動作確認ログ
+          if (frameCount === 1) {
+            console.log('[ObsRoom] First PCM frame captured (len=' + input.length + ')');
+          }
+        };
+        console.log('[ObsRoom] Audio capture started (AudioContext state=' + vadAudioCtx.state + ', sampleRate=' + vadAudioCtx.sampleRate + ')');
+
+        // 1秒後に callback が一度も呼ばれてなければ警告
+        setTimeout(() => {
+          if (audioRecordingActive && frameCount === 0) {
+            console.error('[ObsRoom] Audio capture: NO PCM frames after 1s — ScriptProcessorNode not firing. AudioContext state=' + vadAudioCtx.state);
+          }
+        }, 1000);
+      }
+
+      function stopAudioCapture() {
+        audioRecordingActive = false;
+        if (pcmRecorderNode) {
+          pcmRecorderNode.onaudioprocess = null;
+          pcmRecorderNode.disconnect();
+          pcmRecorderNode = null;
+        }
+
+        // Merge all PCM chunks
+        let totalLen = 0;
+        for (const chunk of pcmSamples) totalLen += chunk.length;
+        const merged = new Float32Array(totalLen);
+        let offset = 0;
+        for (const chunk of pcmSamples) {
+          merged.set(chunk, offset);
+          offset += chunk.length;
+        }
+        pcmSamples = [];
+        const durationSec = vadAudioCtx ? (totalLen / vadAudioCtx.sampleRate).toFixed(2) : '?';
+        console.log(`[ObsRoom] Audio capture stopped: ${totalLen} samples (${durationSec}s)`);
+        if (totalLen === 0) {
+          console.error('[ObsRoom] No audio captured! WAV upload will be skipped. Check mic permission and AudioContext state.');
+        }
+        return merged;
+      }
+
+      function encodeWAV(samples, sampleRate) {
+        const numChannels = 1;
+        const bitsPerSample = 16;
+        const byteRate = sampleRate * numChannels * bitsPerSample / 8;
+        const blockAlign = numChannels * bitsPerSample / 8;
+        const dataLength = samples.length * blockAlign;
+        const buffer = new ArrayBuffer(44 + dataLength);
+        const view = new DataView(buffer);
+
+        // RIFF header
+        writeString(view, 0, 'RIFF');
+        view.setUint32(4, 36 + dataLength, true);
+        writeString(view, 8, 'WAVE');
+        // fmt subchunk
+        writeString(view, 12, 'fmt ');
+        view.setUint32(16, 16, true);
+        view.setUint16(20, 1, true); // PCM
+        view.setUint16(22, numChannels, true);
+        view.setUint32(24, sampleRate, true);
+        view.setUint32(28, byteRate, true);
+        view.setUint16(32, blockAlign, true);
+        view.setUint16(34, bitsPerSample, true);
+        // data subchunk
+        writeString(view, 36, 'data');
+        view.setUint32(40, dataLength, true);
+
+        // Convert float32 to int16
+        let off = 44;
+        for (let i = 0; i < samples.length; i++) {
+          const s = Math.max(-1, Math.min(1, samples[i]));
+          view.setInt16(off, s < 0 ? s * 0x8000 : s * 0x7FFF, true);
+          off += 2;
+        }
+        return buffer;
+      }
+
+      function writeString(view, offset, str) {
+        for (let i = 0; i < str.length; i++) {
+          view.setUint8(offset + i, str.charCodeAt(i));
+        }
+      }
+
+      // Tracks in-flight audio uploads — beforeunload warns user if non-empty
+      const inflightUploads = new Set();
+
+      function setUploadStatus(text, color) {
+        for (const id of ['rec-result', 'lec-rec-result']) {
+          const el = document.getElementById(id);
+          if (el) {
+            el.textContent = text;
+            el.style.color = color || '#81c784';
+          }
+        }
+      }
+
+      async function uploadAudioForTranscription(wavBuffer, sessionTimestamp) {
+        const sizeKB = Math.round(wavBuffer.byteLength / 1024);
+        const uploadId = `${sessionTimestamp}-${myRole}`;
+        inflightUploads.add(uploadId);
+        setUploadStatus(`音声 upload 中... (${sizeKB}KB)`, '#ffb74d');
+        try {
+          const base = getBasePath();
+          const blob = new Blob([wavBuffer], { type: 'audio/wav' });
+          const formData = new FormData();
+          formData.append('audio', blob, `${myRole}.wav`);
+
+          const url = `${base}/api/observation/audio/${sessionTimestamp}`;
+          console.log(`[ObsRoom] Uploading audio (${blob.size} bytes) → ${url}`);
+          const resp = await fetch(url, { method: 'POST', body: formData });
+          const result = await resp.json();
+          if (resp.ok && result.ok) {
+            console.log('[ObsRoom] Audio upload OK:', result);
+            setUploadStatus(`音声 upload 完了 (${sizeKB}KB) - 文字起こし開始`, '#81c784');
+          } else {
+            console.error('[ObsRoom] Audio upload returned error:', resp.status, result);
+            setUploadStatus('音声 upload 失敗', '#ef5350');
+          }
+          pollSpeechSignals(sessionTimestamp);
+        } catch (e) {
+          console.error('[ObsRoom] Audio upload failed:', e);
+          setUploadStatus('音声 upload エラー: ' + e.message, '#ef5350');
+        } finally {
+          inflightUploads.delete(uploadId);
+        }
+      }
+
+      // ===== Speech signal polling (librosa + GPT-4o-mini) =====
+      const _signalPollingActive = new Set();
+      const SIGNAL_POLL_INTERVAL_MS = 5000;
+      const SIGNAL_POLL_TIMEOUT_MS = 180000; // 3分でgiveup
+
+      async function pollSpeechSignals(sessionTimestamp) {
+        if (_signalPollingActive.has(sessionTimestamp)) return;
+        _signalPollingActive.add(sessionTimestamp);
+        const base = getBasePath();
+        const startedAt = Date.now();
+        console.log(`[Signals] polling start ts=${sessionTimestamp}`);
+
+        const tick = async () => {
+          if (Date.now() - startedAt > SIGNAL_POLL_TIMEOUT_MS) {
+            console.warn(`[Signals] polling timeout for ${sessionTimestamp}`);
+            _signalPollingActive.delete(sessionTimestamp);
+            return;
+          }
+          try {
+            const r = await fetch(`${base}/api/observation/signals/${sessionTimestamp}`);
+            const data = await r.json();
+            if (data && data.per_role) {
+              console.log(`[Signals] received for ${sessionTimestamp}`, data);
+              applySpeechSignals(data);
+              _signalPollingActive.delete(sessionTimestamp);
+              return;
+            }
+            // status: transcribing | analyzing | no_data → keep polling
+            console.log(`[Signals] status=${data.status} (retry in ${SIGNAL_POLL_INTERVAL_MS}ms)`);
+          } catch (e) {
+            console.warn('[Signals] poll error:', e);
+          }
+          setTimeout(tick, SIGNAL_POLL_INTERVAL_MS);
+        };
+        setTimeout(tick, SIGNAL_POLL_INTERVAL_MS);
+      }
+
+      // Map GPT signal output → setSignal() state.
+      // lang-* signals' `dir` in SIGNAL_CATALOG: + → 'pos', - → 'neg' when present.
+      const LANG_SIGNAL_DIR = {
+        'lang-agree': 'pos',
+        'lang-disagree': 'neg',
+        'lang-understand': 'pos',
+        'lang-repair': 'neg',
+        'lang-hedge': 'neg',
+        'lang-stance': 'pos',
+        'lang-commit': 'pos',
+        'dial-question': 'neg',
+      };
+
+      function applySpeechSignals(data) {
+        // Prefer student data for the SIGNAL_CATALOG (student is the observed subject).
+        // Fall back to lecturer if student missing.
+        const target = (data.per_role && data.per_role.student) || (data.per_role && data.per_role.lecturer) || null;
+        if (!target) return;
+
+        // 1) Update 7 lang-* signals from GPT classification
+        const sigs = target.signals || {};
+        for (const [sid, dir] of Object.entries(LANG_SIGNAL_DIR)) {
+          const info = sigs[sid];
+          if (!info) {
+            setSignal(sid, 'idle', '--');
+            continue;
+          }
+          if (info.present) {
+            const conf = typeof info.confidence === 'number' ? info.confidence : 0;
+            const detail = `${(conf * 100).toFixed(0)}% ${(info.evidence || '').slice(0, 40)}`;
+            setSignal(sid, dir, detail);
+          } else {
+            setSignal(sid, 'idle', '--');
+          }
+        }
+
+        // 2) Show pitch / speech-rate in console + optional UI element
+        const af = target.audio_features || {};
+        const pitch = af.pitch || {};
+        const rate = af.speech_rate || {};
+        const energy = af.energy || {};
+        const summary = `🎵 pitch ${pitch.mean_hz ? pitch.mean_hz.toFixed(1) + 'Hz (σ=' + (pitch.std_hz || 0).toFixed(1) + ')' : 'n/a'} | rate ${(rate.onset_rate_per_sec || 0).toFixed(2)}/s | energy ${(energy.mean_rms || 0).toFixed(3)}`;
+        console.log('[Signals] prosody:', summary);
+        console.log('[Signals] interpretation:', target.prosody_interpretation || '');
+        console.log('[Signals] summary:', target.overall_summary || '');
+
+        // Update prosody display panel if it exists
+        const prosodyEl = document.getElementById('speech-prosody-display');
+        if (prosodyEl) {
+          prosodyEl.innerHTML = `
+            <div style="font-size:11px;color:#8b949e;margin-bottom:4px">音響特徴 (librosa)</div>
+            <div style="font-size:13px;color:#e6edf3">${summary}</div>
+            <div style="font-size:11px;color:#8b949e;margin-top:6px">韻律解釈: ${target.prosody_interpretation || '--'}</div>
+            <div style="font-size:11px;color:#8b949e">要約: ${target.overall_summary || '--'}</div>
+          `;
+        }
+      }
+
+      // ========== VAD (Voice Activity Detection) ==========
+      const VAD_FFT_SIZE = 2048;     // upgraded from 512: needed for autocorrelation pitch detection
+      const VAD_THRESHOLD = 15;
+      const VAD_CHECK_MS = 50;       // tighter loop to gather enough samples for prosody (was 200ms)
+      // ===== Prosody constants =====
+      const PROSODY_AGG_MS = 1000;             // aggregate every 1 second
+      const PROSODY_PITCH_MIN_HZ = 70;
+      const PROSODY_PITCH_MAX_HZ = 400;
+      const PROSODY_RMS_GATE = 0.01;           // ignore frames quieter than this for pitch
+      const PROSODY_ENDING_TAIL_MS = 300;      // last 300ms of an utterance for ending-elongation
+      let vadAudioCtx = null;
+      let vadAnalyser = null;
+      let vadStream = null;
+      let vadInterval = null;
+      let vadSpeaking = false;
+      // ===== Prosody state =====
+      let prosodyTimeBuffer = null;            // Float32Array reused per frame
+      let prosodyFrameLog = [];                // [{t, pitchHz|null, rms}] within current 1s window
+      let prosodyLastEmitAt = 0;
+      let prosodyUtteranceFrames = [];         // frames within current utterance (for ending elongation)
+      let prosodyLastEndingMs = 0;             // last computed ending elongation, attached to next emit
+
+      async function initVAD(deviceId) {
+        try {
+          const audioConstraints = deviceId ? { deviceId: { exact: deviceId } } : true;
+          // Timeout getUserMedia to prevent hanging in restricted environments
+          vadStream = await Promise.race([
+            navigator.mediaDevices.getUserMedia({ audio: audioConstraints }),
+            new Promise((_, reject) => setTimeout(() => reject(new Error('getUserMedia timeout')), 5000))
+          ]);
+          vadAudioCtx = new AudioContext();
+          const source = vadAudioCtx.createMediaStreamSource(vadStream);
+          vadAnalyser = vadAudioCtx.createAnalyser();
+          vadAnalyser.fftSize = VAD_FFT_SIZE;
+          source.connect(vadAnalyser);
+
+          const dataArray = new Uint8Array(vadAnalyser.frequencyBinCount);
+          prosodyTimeBuffer = new Float32Array(vadAnalyser.fftSize);
+          const sampleRate = vadAudioCtx.sampleRate;
+          prosodyFrameLog = [];
+          prosodyUtteranceFrames = [];
+          prosodyLastEmitAt = performance.now();
+
+          vadInterval = setInterval(() => {
+            vadAnalyser.getByteFrequencyData(dataArray);
+            let sum = 0;
+            for (let i = 0; i < dataArray.length; i++) sum += dataArray[i];
+            const avg = sum / dataArray.length;
+            const nowSpeaking = avg > VAD_THRESHOLD;
+            if (nowSpeaking !== vadSpeaking) {
+              const wasSpeaking = vadSpeaking;
+              vadSpeaking = nowSpeaking;
+              if (socket && socket.connected) {
+                socket.emit('speech-state', { speaking: vadSpeaking });
+              }
+              // 発話終了 → 末尾 PROSODY_ENDING_TAIL_MS の語尾伸びを計算
+              if (wasSpeaking && !nowSpeaking) {
+                prosodyLastEndingMs = computeEndingElongation(prosodyUtteranceFrames);
+                prosodyUtteranceFrames = [];
+              }
+              if (!wasSpeaking && nowSpeaking) {
+                prosodyUtteranceFrames = [];
+              }
+            }
+
+            // Prosody 抽出（Student ロールのみ送る）
+            if (myRole === 'student') {
+              vadAnalyser.getFloatTimeDomainData(prosodyTimeBuffer);
+              const rms = computeRms(prosodyTimeBuffer);
+              const pitchHz = rms > PROSODY_RMS_GATE
+                ? autocorrelatePitch(prosodyTimeBuffer, sampleRate)
+                : null;
+              const tNow = performance.now();
+              prosodyFrameLog.push({ t: tNow, pitchHz, rms });
+              if (vadSpeaking) prosodyUtteranceFrames.push({ t: tNow, pitchHz, rms });
+
+              // 1秒経過したら集計・送信
+              if (tNow - prosodyLastEmitAt >= PROSODY_AGG_MS) {
+                emitProsodySample(tNow);
+                prosodyLastEmitAt = tNow;
+              }
+            }
+          }, VAD_CHECK_MS);
+          console.log('[ObsRoom] VAD initialized for role:', myRole);
+        } catch (e) {
+          console.warn('[ObsRoom] VAD init failed:', e.message);
+        }
+      }
+
+      function destroyVAD() {
+        if (vadInterval) { clearInterval(vadInterval); vadInterval = null; }
+        if (vadStream) { vadStream.getTracks().forEach(t => t.stop()); vadStream = null; }
+        if (vadAudioCtx) { vadAudioCtx.close().catch(() => {}); vadAudioCtx = null; }
+        vadAnalyser = null;
+        vadSpeaking = false;
+        prosodyFrameLog = [];
+        prosodyUtteranceFrames = [];
+      }
+
+      // ========== Prosody helpers ==========
+      function computeRms(samples) {
+        let sumSq = 0;
+        for (let i = 0; i < samples.length; i++) sumSq += samples[i] * samples[i];
+        return Math.sqrt(sumSq / samples.length);
+      }
+
+      // Simple autocorrelation pitch detector (peak in [PITCH_MIN_HZ, PITCH_MAX_HZ])
+      // Returns pitch in Hz or null if no clear peak (noise/silence/whisper)
+      function autocorrelatePitch(samples, sampleRate) {
+        const minLag = Math.floor(sampleRate / PROSODY_PITCH_MAX_HZ);
+        const maxLag = Math.floor(sampleRate / PROSODY_PITCH_MIN_HZ);
+        if (maxLag >= samples.length) return null;
+        let bestLag = -1;
+        let bestCorr = 0;
+        // Simple normalized autocorrelation
+        let sumSq = 0;
+        for (let i = 0; i < samples.length; i++) sumSq += samples[i] * samples[i];
+        if (sumSq < 1e-6) return null;
+        for (let lag = minLag; lag <= maxLag; lag++) {
+          let corr = 0;
+          for (let i = 0; i < samples.length - lag; i++) {
+            corr += samples[i] * samples[i + lag];
+          }
+          corr = corr / sumSq;
+          if (corr > bestCorr) { bestCorr = corr; bestLag = lag; }
+        }
+        // Reject low-confidence peaks (likely no real periodic component)
+        if (bestLag <= 0 || bestCorr < 0.3) return null;
+        return sampleRate / bestLag;
+      }
+
+      // Ending elongation: how stable was pitch in the last PROSODY_ENDING_TAIL_MS of the utterance?
+      // Returns ms-equivalent of stable tail (0 = no elongation, up to PROSODY_ENDING_TAIL_MS = full elongation)
+      function computeEndingElongation(utteranceFrames) {
+        if (!utteranceFrames || utteranceFrames.length === 0) return 0;
+        const lastT = utteranceFrames[utteranceFrames.length - 1].t;
+        const cutoff = lastT - PROSODY_ENDING_TAIL_MS;
+        const tail = utteranceFrames.filter(f => f.t >= cutoff && f.pitchHz !== null);
+        if (tail.length < 3) return 0;
+        const pitches = tail.map(f => f.pitchHz);
+        const mean = pitches.reduce((a, b) => a + b, 0) / pitches.length;
+        let variance = 0;
+        for (const p of pitches) variance += (p - mean) * (p - mean);
+        variance /= pitches.length;
+        const stdHz = Math.sqrt(variance);
+        // Stable pitch (std < 8Hz) means elongation. Return duration of tail × stability factor.
+        const stability = Math.max(0, 1 - stdHz / 20);
+        const tailDurationMs = tail[tail.length - 1].t - tail[0].t;
+        return tailDurationMs * stability;
+      }
+
+      // Aggregate the last 1s of frames into a single prosody sample and emit
+      function emitProsodySample(now) {
+        const cutoff = now - PROSODY_AGG_MS;
+        const frames = prosodyFrameLog.filter(f => f.t >= cutoff);
+        prosodyFrameLog = frames;  // keep only recent
+
+        if (frames.length === 0) return;
+
+        const pitchFrames = frames.filter(f => f.pitchHz !== null);
+        let pitchHzMean = null, pitchHzStd = null;
+        if (pitchFrames.length >= 3) {
+          const ps = pitchFrames.map(f => f.pitchHz);
+          pitchHzMean = ps.reduce((a, b) => a + b, 0) / ps.length;
+          let v = 0;
+          for (const p of ps) v += (p - pitchHzMean) * (p - pitchHzMean);
+          pitchHzStd = Math.sqrt(v / ps.length);
+        }
+        const intensityRms = frames.reduce((a, f) => a + f.rms, 0) / frames.length;
+        // Speech rate proxy: count RMS peaks above 1.5× mean RMS as syllable proxies
+        let peaks = 0;
+        const meanRms = intensityRms;
+        for (let i = 1; i < frames.length - 1; i++) {
+          if (frames[i].rms > meanRms * 1.5 &&
+              frames[i].rms > frames[i - 1].rms && frames[i].rms > frames[i + 1].rms) {
+            peaks++;
+          }
+        }
+        const speechRateProxy = peaks / (PROSODY_AGG_MS / 1000);  // peaks per second
+        // Pause: contiguous frames below RMS_GATE
+        let maxPauseMs = 0, curPauseStart = null;
+        for (const f of frames) {
+          if (f.rms < PROSODY_RMS_GATE) {
+            if (curPauseStart === null) curPauseStart = f.t;
+            maxPauseMs = Math.max(maxPauseMs, f.t - curPauseStart);
+          } else {
+            curPauseStart = null;
+          }
+        }
+
+        const payload = {
+          pitchHzMean, pitchHzStd, intensityRms,
+          speechRateProxy, pauseMs: maxPauseMs,
+          endingElongationMs: prosodyLastEndingMs,
+          speaking: vadSpeaking,
+        };
+        prosodyLastEndingMs = 0;  // consume
+
+        // Debug: window.__debugProsody = true; を Console で叩くと毎秒ログ表示
+        if (window.__debugProsody) {
+          console.log('[prosody]', payload);
+        }
+        // Debug: 直近サンプルへいつでも参照可能（ライブ確認用）
+        window.__lastProsody = payload;
+
+        if (socket && socket.connected) {
+          socket.emit('prosody', payload);
+        }
+      }
+
+      // ========== Recording ==========
+      function startRecording() {
+        if (socket) socket.emit('start-recording');
+      }
+      function stopRecording() {
+        if (socket) socket.emit('stop-recording');
+      }
+      function setTimerText(text) {
+        const obs = document.getElementById('rec-timer');
+        const lec = document.getElementById('lec-rec-timer');
+        if (obs) obs.textContent = text;
+        if (lec) lec.textContent = text;
+      }
+      function setTimerColor(color) {
+        const obs = document.getElementById('rec-timer');
+        const lec = document.getElementById('lec-rec-timer');
+        if (obs) obs.style.color = color;
+        if (lec) lec.style.color = color;
+      }
+      function startRecTimer(startTime) {
+        stopRecTimer();
+        const start = startTime || Date.now();
+        setTimerColor('#ef5350');
+        recTimerInterval = setInterval(() => {
+          const elapsed = Math.floor((Date.now() - start) / 1000);
+          const m = String(Math.floor(elapsed / 60)).padStart(2, '0');
+          const s = String(elapsed % 60).padStart(2, '0');
+          setTimerText(`${m}:${s}`);
+        }, 1000);
+      }
+      function stopRecTimer() {
+        if (recTimerInterval) { clearInterval(recTimerInterval); recTimerInterval = null; }
+        setTimerText('00:00');
+        setTimerColor('#aaa');
+      }
+
+      // ========== Init ==========
+      window.addEventListener('load', () => {
+        connectSocket();
+      });
+
+      // Ensure leave message is sent when closing tab/window
+      window.addEventListener('beforeunload', (e) => {
+        // 音声 upload が進行中なら離脱を警告
+        if (inflightUploads && inflightUploads.size > 0) {
+          e.preventDefault();
+          e.returnValue = '音声ファイルをアップロード中です。ページを閉じると文字起こしが取れません。';
+          return e.returnValue;
+        }
+        removeAllPeerConnections();
+        if (socket && myRole) {
+          socket.emit('leave');
+        }
+      });
+      window.addEventListener('pagehide', () => {
+        removeAllPeerConnections();
+        if (socket && myRole) {
+          socket.emit('leave');
+        }
+      });
+    </script>
+  </body>
+</html>

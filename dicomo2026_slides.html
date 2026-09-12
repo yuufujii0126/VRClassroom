@@ -1,0 +1,582 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>DICOMO2026 — VR教室で納得度は自動で測れるか</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/dist/reveal.css">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/dist/theme/white.css" id="theme">
+<style>
+  :root { --r-main-font-size: 30px; }
+  .reveal h1 { font-size: 1.9em; line-height: 1.25; }
+  .reveal h2 { font-size: 1.5em; }
+  .reveal h3 { font-size: 1.05em; color: #2a6; font-weight: 600; }
+  .reveal section { text-align: left; }
+  .reveal .center { text-align: center; }
+  .reveal table { font-size: 0.62em; margin: 0.4em 0; }
+  .reveal table th { background: #f0f6f2; color: #1a5; }
+  .reveal table td, .reveal table th { padding: 0.25em 0.5em; }
+  .reveal blockquote { font-size: 0.95em; width: 90%; text-align: center; background: #f3faf6; border-left: 4px solid #2a6; }
+  .reveal pre { font-size: 0.5em; box-shadow: none; border: 1px solid #ddd; }
+  .reveal pre code { padding: 1em; max-height: none; }
+  .reveal ul { font-size: 0.92em; }
+  .reveal .small { font-size: 0.75em; color: #666; }
+  .reveal .refs { font-size: 0.42em; color:#777; margin-top: 0.7em; border-top: 1px solid #ddd; padding-top: 0.4em; line-height: 1.6; }
+  .reveal sup.r { color:#2a6; font-weight:600; font-size:0.62em; }
+  .reveal .tag { display:inline-block; background:#2a6; color:#fff; border-radius:4px; padding:1px 8px; font-size:0.7em; margin-bottom:0.3em;}
+  .reveal .hl { background: #fff3b0; padding: 0 4px; border-radius: 3px; }
+  .reveal .arrow { color:#2a6; font-weight:700; }
+  .reveal .footer { position: fixed; bottom: 8px; right: 16px; font-size: 12px; color:#aaa; }
+  .reveal section.title h1 { color:#173; }
+  /* システム構成図 */
+  .reveal .arch { display:flex; flex-direction:column; align-items:center; gap:0; margin-top:0.15em; }
+  .reveal .arch-box { width:72%; border:2px solid #2a6; border-radius:10px; padding:0.32em 0.9em; background:#f3faf6; box-sizing:border-box; }
+  .reveal .arch-box.io { border-color:#888; background:#f6f6f6; }
+  .reveal .arch-box .role { font-size:0.6em; color:#777; float:right; font-weight:600; margin-top:0.2em; }
+  .reveal .arch-box .name { font-weight:700; color:#173; font-size:0.95em; }
+  .reveal .arch-box code { font-size:0.72em; color:#2a6; background:none; padding:0; }
+  .reveal .arch-box.io code { color:#666; }
+  .reveal .chips { margin-top:0.3em; clear:both; }
+  .reveal .chip { display:inline-block; background:#2a6; color:#fff; border-radius:12px; padding:1px 11px; font-size:0.6em; margin:2px 5px 0 0; }
+  .reveal .arch-arrow { color:#2a6; font-weight:700; font-size:1.1em; line-height:1.1; text-align:center; padding:0.06em 0; }
+  .reveal .arch-arrow .lbl { font-size:0.42em; color:#888; font-weight:600; letter-spacing:0.02em; }
+  .reveal .arch-row { display:flex; align-items:stretch; justify-content:center; width:72%; gap:0.6em; }
+  .reveal .arch-row .arch-box { width:auto; flex:1; }
+  .reveal .arch-llm { border:2px dashed #c08a00; border-radius:10px; background:#fffaf0; padding:0.4em 0.7em; width:33%; box-sizing:border-box; display:flex; flex-direction:column; justify-content:center; }
+  .reveal .arch-llm .name { font-weight:700; color:#a06f00; font-size:0.82em; }
+  .reveal .arch-llm .sub { font-size:0.6em; color:#7a5c00; line-height:1.4; margin-top:0.2em; }
+  .reveal .arch-conn { align-self:center; color:#c08a00; font-weight:700; font-size:1em; }
+  /* 構成図＋実機写真の2カラム */
+  .reveal .sys2 { display:flex; gap:1.1em; align-items:flex-start; margin-top:0.25em; }
+  .reveal .sys2 .photo { width:37%; flex-shrink:0; }
+  .reveal .sys2 .photo img { width:100%; border:2px solid #2a6; border-radius:8px; display:block; margin:0; }
+  .reveal .sys2 .photo .cap { font-size:0.46em; color:#666; margin-top:0.4em; line-height:1.45; }
+  .reveal .sys2 .arch { flex:1; margin-top:0; }
+  .reveal .sys2 .arch-box { width:100%; padding:0.28em 0.7em; }
+  .reveal .sys2 .arch-box .name { font-size:0.82em; }
+  .reveal .sys2 .arch-box code { font-size:0.6em; }
+  .reveal .sys2 .arch-box .role { font-size:0.5em; }
+  .reveal .sys2 .chip { font-size:0.5em; padding:1px 8px; }
+  .reveal .sys2 .arch-row { width:100%; gap:0.4em; }
+  .reveal .sys2 .arch-arrow { font-size:0.9em; }
+  .reveal .sys2 .arch-arrow .lbl { font-size:0.4em; }
+  .reveal .sys2 .arch-llm { width:42%; padding:0.28em 0.6em; }
+  .reveal .sys2 .arch-llm .name { font-size:0.68em; }
+  .reveal .sys2 .arch-llm .sub { font-size:0.52em; }
+  /* 実装デモ（分析ダッシュボード） */
+  .reveal .demo2 { display:flex; gap:1em; align-items:flex-start; margin-top:0.3em; }
+  .reveal .demo2 img { width:62%; flex-shrink:0; border:2px solid #2a6; border-radius:8px; display:block; box-shadow:0 2px 10px rgba(0,0,0,0.18); }
+  .reveal .demo2 ul { flex:1; font-size:0.78em; margin-top:0; }
+  .reveal .demo2 ul code { font-size:0.85em; color:#2a6; }
+</style>
+</head>
+<body>
+<div class="reveal"><div class="slides">
+
+<!-- 1 -->
+<section class="title center">
+  <span class="tag">DICOMO2026</span>
+  <h1>VR教室で「納得度」は<br>自動で測れるか</h1>
+  <h3>頭部・表情・音声・言語の多モーダル指標による学習者納得度の推定</h3>
+  <p style="margin-top:1em;"><strong>藤井優羽　中村亮太</strong>　武蔵野大学 データサイエンス学部</p>
+  <aside class="notes">⏱0:30 — 武蔵野大学の中村です。本日は『VR教室観察システムにおける学習者の納得度推定に向けた多モーダル指標の自動測定』と題して発表します。学習者がどれだけ納得しているかを、自己申告に頼らず、頭部・表情・声・言葉から自動で測る試みです。よろしくお願いします。</aside>
+</section>
+
+<!-- 目次 -->
+<section>
+  <h2>本日の発表の流れ</h2>
+  <ol style="font-size:0.95em; line-height:1.7;">
+    <li><strong>研究背景と課題</strong> — 学習における「納得度」と従来手法の限界</li>
+    <li><strong>関連研究と研究目的</strong> — 多モーダルと心理状態の対応、本研究の立ち位置</li>
+    <li><strong>提案手法</strong> — 主観指標（4次元尺度）／システム構成／客観指標（5モーダル）</li>
+    <li><strong>客観×主観の照合方法</strong> — 相関分析と予測モデル、主仮説</li>
+    <li><strong>現状の進捗と実験計画</strong> — パイロット実装から検証フェーズへ</li>
+    <li><strong>将来像とまとめ</strong> — 教師支援への応用</li>
+  </ol>
+  <aside class="notes">本日は、まず研究背景と課題、次に関連研究と目的、そして提案手法、客観と主観の照合方法、進捗と実験計画、最後に将来像とまとめ、という流れでお話しします。</aside>
+</section>
+
+<!-- 2 -->
+<section>
+  <h2>研究背景 — 学習効果は「納得度」に依存する</h2>
+  <p><strong>「分かった」だけでは学びは完成しない</strong></p>
+  <blockquote>学習は多次元の心理状態を経て深まる：理解 <span class="arrow">→</span> 同意 <span class="arrow">→</span> 受容 <span class="arrow">→</span> 行動意図（コミットメント）</blockquote>
+  <ul>
+    <li>教師が説明を「伝えた」ことと、学習者が「納得した」ことは別物</li>
+    <li>納得度（agreement / acceptance）が低いまま進むと、知識は定着・応用されない</li>
+    <li>だが教師は<span class="hl">「今この瞬間、伝わっているか」を客観的に知る手段を持たない</span></li>
+  </ul>
+  <aside class="notes">⏱1:00 — 学習効果は『納得度』という心理状態に支えられています。単なる理解だけでなく、同意し、受け入れ、行動に移そうと思う多段階の状態です。教師が説明したつもりでも納得しているとは限らない。しかし教師には、その場で納得度を客観的に知る手段がありませんでした。</aside>
+</section>
+
+<!-- 3 -->
+<section>
+  <h2>従来手法の限界</h2>
+  <p><strong>従来の納得度測定 = 授業後アンケート（自己報告）頼み</strong></p>
+  <table>
+    <tr><th>課題</th><th>内容</th></tr>
+    <tr><td>後出し</td><td>授業が終わってからしか分からない</td></tr>
+    <tr><td>主観的</td><td>本人の自己申告に依存し、客観性に欠ける</td></tr>
+    <tr><td>非リアルタイム</td><td>「今この瞬間」の状態を捉えられない</td></tr>
+    <tr><td>粒度が粗い</td><td>どの説明で納得が下がったかを特定できない</td></tr>
+  </table>
+  <p class="arrow">→ 授業中の振る舞いから、納得度をリアルタイム・客観的に自動推定したい</p>
+  <aside class="notes">⏱0:50 — 従来、納得度は授業後アンケートで測られてきました。しかし後出しで、主観的で、リアルタイム性がなく、どの場面で納得が下がったかも分かりません。そこで本研究は、授業中の振る舞いそのものから納得度を自動推定することを目指します。</aside>
+</section>
+
+<!-- 4 -->
+<section>
+  <h2>関連研究と本研究の差分</h2>
+  <p><strong>既存研究は「感情・関与」を測る ─ 本研究は「納得度（態度の多段階）」を測る</strong></p>
+  <table>
+    <tr><th>手がかり</th><th>意味</th><th>代表的根拠</th></tr>
+    <tr><td>うなずき／首振り</td><td>同意・フィードバック</td><td>Allwood '92<sup class="r">[1]</sup>, Morency '07<sup class="r">[2]</sup></td></tr>
+    <tr><td>表情AU（笑顔／困惑）</td><td>感情・認知的不均衡</td><td>Ekman '78<sup class="r">[3]</sup>, D'Mello '12<sup class="r">[4]</sup></td></tr>
+    <tr><td>同意／不同意表現</td><td>言語的態度</td><td>Galley '04<sup class="r">[5]</sup></td></tr>
+    <tr><td>声の高さ・間（ポーズ）</td><td>不確実性・関与</td><td>Scherer '03<sup class="r">[6]</sup></td></tr>
+  </table>
+  <ul>
+    <li>モーダルと心理状態の対応は確立済み。多モーダル統合自体も先行例は多い</li>
+    <li>既存研究が測るのは多くが <strong>emotion / engagement / confusion</strong>（"状態"）</li>
+    <li>本研究が測るのは <span class="hl">納得度＝理解→同意→受容→行動意図（"態度変容の多段階"）</span></li>
+    <li>→ 多モーダル統合は"手段"。<strong>測る対象（納得度の4次元化）と客観×主観の妥当性検証こそが新規性</strong></li>
+  </ul>
+  <div class="refs">
+    [1] Allwood, Nivre &amp; Ahlsén (1992) <em>On the semantics and pragmatics of linguistic feedback.</em> Journal of Semantics, 9(1), 1–26.
+    [2] Morency, Sidner, Lee &amp; Darrell (2007) <em>Head gestures for perceptual interfaces.</em> Artificial Intelligence, 171(8–9), 568–585.
+    [3] Ekman &amp; Friesen (1978) <em>Facial Action Coding System (FACS).</em> Consulting Psychologists Press.
+    [4] D'Mello &amp; Graesser (2012) <em>Dynamics of affective states during complex learning.</em> Learning and Instruction, 22(2), 145–157.
+    [5] Galley, McKeown, Hirschberg &amp; Shriberg (2004) <em>Identifying agreement and disagreement in conversational speech.</em> Proc. ACL 2004.
+    [6] Scherer (2003) <em>Vocal communication of emotion: A review of research paradigms.</em> Speech Communication, 40(1–2), 227–256.
+  </div>
+  <aside class="notes">⏱1:00 — うなずきが同意を、表情が認知的不均衡を、声や言葉が態度を反映することは各分野で確立され、多モーダル統合の研究も既にあります。ただ多くが測るのは感情・関与・困惑という"状態"です。本研究が測るのは、理解・同意・受容・行動意図という"態度変容の多段階"＝納得度。多モーダル統合は手段で、この"測る対象"の置き方と主観尺度での妥当性検証こそが新規性です。</aside>
+</section>
+
+<!-- 5 -->
+<section>
+  <h2>研究目的</h2>
+  <p class="small">問い</p>
+  <blockquote>学習者の「納得度」は、授業中の多モーダルな振る舞いから<br><span class="hl">客観的・自動的に推定できるか？</span></blockquote>
+  <p><strong>本研究で達成したいこと</strong></p>
+  <ol>
+    <li><strong>〔学術〕</strong> 多モーダル客観指標と<strong>納得度4次元の対応関係を解明</strong>する（理解／同意／受容／コミットメント）</li>
+    <li><strong>〔学術〕</strong> 客観指標による推定が主観評価とどれだけ一致するか＝<strong>妥当性を明らかにする</strong></li>
+    <li><strong>〔応用〕</strong> 納得度をリアルタイムに可視化し、<strong>教師支援につなげる</strong></li>
+  </ol>
+  <p class="small">↳ そのための手段：VR教室＋観察室を実装し5モーダルを自動測定 → 4次元リッカート尺度を ground truth として照合（詳細は次ページ以降）</p>
+  <aside class="notes">⏱1:00 — 研究目的です。本研究の問いは「学習者の納得度を、授業中の振る舞いから客観的・自動的に推定できるか」です。達成したいことは三つ。一つ目は、どの客観指標がどの納得度次元――理解・同意・受容・コミットメント――を反映するか、その対応関係を解明すること。二つ目は、客観指標による推定が主観評価とどれだけ一致するか、妥当性を明らかにすること。三つ目は応用として、納得度をリアルタイムに可視化し教師支援につなげることです。そのための手段が、VR教室と観察室を実装して5モーダルを自動測定し、4次元尺度をground truthに照合する、という流れになります。</aside>
+</section>
+
+<!-- 5.5 -->
+<section>
+  <h2>なぜこの4次元か — 4観点の導出</h2>
+  <p class="small">「納得感」研究 → 現場のズレ分析 → 態度変容理論 の3段階で4次元を導いた</p>
+  <table>
+    <tr><th>ステップ</th><th>内容</th></tr>
+    <tr><td><strong>① 起点（教育学）</strong></td><td>山地・橋本『学生の納得感を高める大学授業』(2012)：納得感は「意味づけ、納得していく<strong>過程</strong>」＝多段階の内面状態。「理解した」だけでは捉えきれない</td></tr>
+    <tr><td><strong>② 現場のズレ分析</strong></td><td>1対1指導で生じる乖離（<strong>分かった ≠ 妥当と思う ≠ 自分の学びにする ≠ 行動する</strong>）を洗い出し、4段階に弁別</td></tr>
+    <tr><td><strong>③ 理論で裏づけ</strong></td><td>「受容」「コミット」の分離は態度変容理論に対応 — Krathwohl 情意領域（受容→価値づけ→内面化）／Ajzen 計画的行動理論（態度 ↔ 行動意図）</td></tr>
+  </table>
+  <p>→ 以上を踏まえ <strong>理解・同意・受容・コミットメント</strong> の4次元として操作的に定義（次ページ）</p>
+  <aside class="notes">⏱0:40 — 4次元の出どころ。起点は教育学の納得感研究で、山地・橋本は納得感を「理解して終わりではなく意味づけて納得していく過程」と述べる。これを多段階の状態として捉えた。次に1対1指導で起きるズレ（分かったが妥当と思わない／同意したが学びにしない／受容したが行動しない）を洗い出し4段階に弁別。最後にこの区分を態度変容理論（Krathwohl情意領域・Ajzen計画的行動理論）と突き合わせ、特に受容とコミットの分離を裏づけた。</aside>
+</section>
+
+<!-- 6 -->
+<section>
+  <h2>主観指標 — 4次元リッカート尺度</h2>
+  <p class="small">納得度を4次元で操作的に定義（各3〜5項目・7件法）</p>
+  <table>
+    <tr><th>次元</th><th>例文</th><th>理論的根拠</th></tr>
+    <tr><td><strong>理解</strong> comprehension</td><td>いま説明されたことを、自分の言葉で他人に説明できる</td><td>認知の理解段階（Anderson &amp; Krathwohl '01）</td></tr>
+    <tr><td><strong>同意</strong> agreement</td><td>いま教師が言ったことは正しいと思う</td><td>態度的同意（説得理論の yielding 段階）</td></tr>
+    <tr><td><strong>受容</strong> acceptance</td><td>いまの説明で、自分の考えが少し変わった</td><td>情意領域：受容→内面化（Krathwohl '64）</td></tr>
+    <tr><td><strong>コミットメント</strong> commitment</td><td>いま学んだことを、今後使ってみたい／応用したい</td><td>行動意図（Ajzen '91 計画的行動理論）</td></tr>
+  </table>
+  <ul>
+    <li><strong>逆転項目</strong>（例「分からない部分があった」）で回答の偏りを抑制</li>
+    <li><strong>事後 retrospective 法</strong>：録画を 30〜60秒セグメント単位で視聴し回答</li>
+    <li>個人差は <strong>z-score 標準化</strong> で補正</li>
+  </ul>
+  <aside class="notes">⏱1:10 — 主観指標として、納得度を4次元で操作的に定義しました。この4つは思いつきではなく、それぞれ心理学・教育学の概念に対応づけています。理解は認知タキソノミーでいう理解段階、同意は態度としての同意、受容はKrathwohlの情意領域でいう"受容から内面化"の段階、コミットメントはAjzenの計画的行動理論の行動意図にあたります。各次元は7件法で複数項目を用意し、逆転項目も入れて回答の偏りを抑えます。回答は事後に録画を30〜60秒のセグメントで見返しながら付けるretrospective法を採り、個人差はz-score標準化で補正します。</aside>
+</section>
+
+<!-- 7 -->
+<section>
+  <h2>システム全体構成</h2>
+  <p><strong>WebXR + Three.js でVR教室を構築、Socket.IO で多人数同期収集</strong></p>
+  <div class="sys2">
+  <div class="photo">
+    <img src="vr-classroom-view.png" alt="実装したVR教室の学習者視点">
+    <div class="cap">▲ 実装したVR教室（学習者視点）。和風教室にアバターを配置し、右下にリアルタイム納得度、上部に録画・講師UIを表示</div>
+  </div>
+  <div class="arch">
+
+    <div class="arch-box">
+      <span class="name">🎓 VR教室空間</span>
+      <code>Three.js ＋ WebXR Device API ／ glTF(.glb) 3Dモデル</code>
+      <div class="chips"><span class="chip">頭部姿勢</span><span class="chip">音声</span><span class="chip">対話</span></div>
+    </div>
+
+    <div class="arch-arrow">▼<br><span class="lbl">Socket.IO によるリアルタイム多人数同期 ＋ WebRTC 音声</span></div>
+
+    <div class="arch-box">
+      <span class="role">複数学習者を同時観察</span>
+      <span class="name">👁 観察室</span>
+      <code>Node.js ＋ Socket.IO サーバ</code>
+    </div>
+
+    <div class="arch-arrow">▼<br><span class="lbl">5モーダルを抽出・可視化</span></div>
+
+    <div class="arch-row">
+      <div class="arch-box">
+        <span class="name">📊 分析ダッシュボード</span>
+        <code>MediaPipe（頭部・表情）<br>Python：librosa ＋ Whisper（音声）</code>
+      </div>
+      <div class="arch-conn">⇄</div>
+      <div class="arch-llm">
+        <span class="name">🤖 LLM推論（言語・対話）</span>
+        <span class="sub">ローカルGPU：qwen3 / gemma3:12b<br>⇄ OpenAI gpt-5-nano を切替</span>
+      </div>
+    </div>
+
+    <div class="arch-arrow">▼</div>
+
+    <div class="arch-box io">
+      <span class="role">エピソード／軌跡単位</span>
+      <span class="name">💾 ログ保存</span>
+      <code>CSV ＋ SQLite</code>
+    </div>
+
+  </div>
+  </div>
+  <aside class="notes">⏱1:10 — 左が実際に実装したVR教室の学習者視点です。和風教室にアバターを置き、右下にリアルタイムの納得度を表示しています。これをThree.jsとWebXRで描画し、観察室で複数学習者を同時観察。頭部・音声・対話はSocket.IOで同期収集、分析ダッシュボードに集約してCSVとSQLiteにエピソード単位で記録します。頭部・表情はMediaPipe、音声はlibrosaとWhisper、言語・対話はLLMで処理し、LLMはローカルGPUとクラウドを切替できる設計です。</aside>
+</section>
+
+<!-- 8 -->
+<section>
+  <h2>客観指標① 頭部・表情</h2>
+  <p class="small">非言語の手がかりを WebXR と MediaPipe で自動抽出</p>
+  <table>
+    <tr><th>モーダル</th><th>指標</th><th>方向</th><th>実装手段</th></tr>
+    <tr><td>頭部</td><td>うなずき</td><td>＋</td><td>WebXR 6DoF＋MediaPipe、Pitch系列の零交差検出</td></tr>
+    <tr><td>頭部</td><td>首振り</td><td>−</td><td>同上（Yaw系列）</td></tr>
+    <tr><td>表情</td><td>笑顔（AU6+AU12）</td><td>＋</td><td>Face Landmarker のブレンドシェイプ→AU写像</td></tr>
+    <tr><td>表情</td><td>困惑（AU4）</td><td>−</td><td>同上</td></tr>
+    <tr><td>表情</td><td>認知的不均衡（AU4+AU7）</td><td>−</td><td>同上（D'Mello モデル<sup class="r">[4]</sup>）</td></tr>
+  </table>
+  <ul>
+    <li>＋＝納得を高める方向、−＝下げる方向の手がかり</li>
+    <li>うなずき検出は オフライン検証環境 <code>nod-fp-debug.html</code> で誤検出を調整</li>
+  </ul>
+  <div class="refs">[4] D'Mello &amp; Graesser (2012) <em>Dynamics of affective states during complex learning.</em> Learning and Instruction, 22(2), 145–157.</div>
+  <aside class="notes">⏱1:10 — 頭部はWebXRの6自由度姿勢とMediaPipeを併用し、ピッチの零交差でうなずき、ヨーで首振りを検出。表情はFace LandmarkerのブレンドシェイプをFACSのAUに写像し、笑顔・困惑、D'Melloの認知的不均衡に対応するAU4+AU7を取ります。うなずきは専用デバッグ環境で誤検出を詰めています。</aside>
+</section>
+
+<!-- 9 -->
+<section>
+  <h2>客観指標② 言語・対話・音声（LLM活用）</h2>
+  <p class="small">発話・対話は LLM、声の物理特徴は音響解析で抽出</p>
+  <table>
+    <tr><th>モーダル</th><th>指標</th><th>方向</th><th>実装手段</th></tr>
+    <tr><td>言語</td><td>同意／不同意表現</td><td>±</td><td>LLM推論（gpt-5-nano / qwen3 / gemma3:12b）</td></tr>
+    <tr><td>言語</td><td>理解確認・聞き返し</td><td>±∓</td><td>同上、30〜60秒セグメント単位でラベル付与</td></tr>
+    <tr><td>言語</td><td>hedge・確信度低下</td><td>−</td><td>同上</td></tr>
+    <tr><td>対話</td><td>行動意図の表明</td><td>＋</td><td>同上</td></tr>
+    <tr><td>対話</td><td>質問・根拠要求</td><td>(−)</td><td>同上</td></tr>
+    <tr><td>音声</td><td>F0・音量・発話速度・ポーズ長</td><td>不確実性／関与</td><td>WebRTC PCM の音響特徴 ＋ <code>analyze_speech.py</code>（librosa＋Whisper）</td></tr>
+  </table>
+  <aside class="notes">⏱1:10 — 発話の同意／不同意、理解確認やhedge、行動意図といった言語的手がかりはLLMにセグメント単位でラベル付け。声の高さや間の長さといった物理特徴はlibrosaとWhisperの音響解析で抽出。言語の意味と声の物理量、両面から捉えます。</aside>
+</section>
+
+<!-- 9.5 実装デモ -->
+<section>
+  <h2>客観指標③ 実装した分析ダッシュボード</h2>
+  <p class="small">5モーダルを集約し、納得度を時系列で可視化 — 実セッションデータで稼働中</p>
+  <div class="demo2">
+    <img src="analysis-dashboard.png" alt="観察分析ダッシュボード：納得度時系列と7下位状態スコア">
+    <ul>
+      <li>上部に<strong>平均納得度</strong>と7下位状態（理解／同意／注意／確信／混乱／不同意／不確実）を即時集計</li>
+      <li>主グラフは<strong>納得度時系列</strong>（＝ポジ群−ネガ群）にイベント発火を重畳</li>
+      <li>8タブで多面分析：納得度／Overview／Timeline／Signals／Transcript／Gaze／Head Pose／Compare</li>
+      <li><code>observation-analysis.html</code>（Chart.js）が実録画JSONを読み込み描画</li>
+    </ul>
+  </div>
+  <aside class="notes">⏱0:40 — これが実際に実装した分析ダッシュボードです。先ほどの5モーダルをすべてここに集約し、画面上部に平均納得度と7つの下位状態スコアを、中央に納得度の時系列グラフを表示します。納得度・タイムライン・視線・頭部姿勢など8つのタブで多面的に確認でき、実際の観察セッションのデータで動作しています。この画面が、次に説明する主観尺度との照合の土台になります。</aside>
+</section>
+
+<!-- 9.8 -->
+<section>
+  <h2>納得度の算出方法 — 特徴量から4次元、そして統合へ</h2>
+  <p><strong>特徴量 → 4観点スコア → 統合納得度 の3ステップで算出</strong></p>
+  <p><strong>① 特徴量 f</strong>　うなずき率・表情(AU4+AU7)・同意表現・声 …　<span class="small">（30〜60秒ごと／z-score標準化）</span></p>
+  <p style="text-align:center;font-size:0.8em;color:#888">⬇</p>
+  <p><strong>② 式1：4観点を 0–1 にスコア化</strong></p>
+  <blockquote>
+    Ĉ<sup>(k)</sup> = σ( Σ w<sub>i</sub><sup>(k)</sup>·f<sub>i</sub> + b )　　k ＝ 理解／同意／受容／コミット
+  </blockquote>
+  <p style="text-align:center;font-size:0.8em;color:#888">⬇</p>
+  <p><strong>③ 式2：4観点を統合</strong></p>
+  <blockquote>
+    Ĉ<sup>total</sup> = Σ γ<sub>k</sub>·Ĉ<sup>(k)</sup>
+  </blockquote>
+  <p>→ 重み <strong>w<sub>i</sub>・γ<sub>k</sub> はスライド10のRidge回帰で主観から推定</strong>（＋/−の方向は重みの符号制約）</p>
+  <aside class="notes">⏱0:50 — では、特徴量をどう納得度の数値にするかです。まず30〜60秒のセグメントごとに、うなずき率や認知的不均衡の表情、同意表現、声の変動といった5モーダルの特徴量をベクトルfにまとめ、z-scoreで個人差を補正します。次に式1で、この特徴量の重み付き和をシグモイドに通し、理解・同意・受容・コミットの4観点それぞれを0から1のスコアにします。先ほどのスライドで示した＋/−の方向は、ここで重みの符号の制約になります。そして式2で、4観点を重みγで足し合わせて一つの統合納得度にします。重みは、現状はドメイン知識で符号を固定したルールベースで、すでにダッシュボードに実装済みです。本実験では、この重みを次に説明するRidge回帰の係数として主観評価から推定します。つまり重みの同定と妥当性検証を同時に行う設計です。</aside>
+</section>
+
+<!-- 9.9 客観指標 ↔ 主観4次元 マッピング -->
+<section>
+  <h2>客観指標と主観4次元の対応関係</h2>
+  <p class="small">各モーダルの指標が反映する次元を、心理学・教育学の根拠に基づき整理</p>
+
+  <table style="font-size:0.56em;">
+    <tr>
+      <th style="text-align:left;">客観指標</th>
+      <th>方向</th>
+      <th style="color:#22c55e;">理解</th>
+      <th style="color:#16a34a;">同意</th>
+      <th style="color:#0ea5e9;">受容</th>
+      <th style="color:#8b5cf6;">コミット</th>
+      <th>主な根拠</th>
+    </tr>
+    <tr style="background:#f0f6f2;"><td colspan="7"><strong>頭部・表情</strong></td></tr>
+    <tr>
+      <td>うなずき</td><td>＋</td>
+      <td></td><td class="hl"><strong>🎯●</strong></td><td>○</td><td></td>
+      <td class="small">Allwood '92, Morency '07</td>
+    </tr>
+    <tr>
+      <td>首振り</td><td>−</td>
+      <td></td><td>●</td><td></td><td></td>
+      <td class="small">不同意の非言語表現</td>
+    </tr>
+    <tr>
+      <td>笑顔 AU6+AU12</td><td>＋</td>
+      <td></td><td>○</td><td>●</td><td></td>
+      <td class="small">情意領域 受容→内面化（Krathwohl '64）</td>
+    </tr>
+    <tr>
+      <td>困惑 AU4</td><td>−</td>
+      <td>●</td><td></td><td></td><td></td>
+      <td class="small">認知的混乱（D'Mello '12）</td>
+    </tr>
+    <tr>
+      <td>認知的不均衡 AU4+AU7</td><td>−</td>
+      <td class="hl"><strong>🎯●</strong></td><td></td><td></td><td></td>
+      <td class="small">学習時の不均衡状態（D'Mello '12）</td>
+    </tr>
+    <tr style="background:#f0f6f2;"><td colspan="7"><strong>言語・対話</strong></td></tr>
+    <tr>
+      <td>同意／不同意表現</td><td>±</td>
+      <td></td><td>●</td><td></td><td></td>
+      <td class="small">Galley '04（態度的同意）</td>
+    </tr>
+    <tr>
+      <td>理解確認・聞き返し</td><td>−</td>
+      <td>●</td><td></td><td></td><td></td>
+      <td class="small">理解未達のメタ言語的シグナル</td>
+    </tr>
+    <tr>
+      <td>hedge・確信度低下</td><td>−</td>
+      <td>○</td><td></td><td>●</td><td></td>
+      <td class="small">内面化に至らない態度の揺らぎ</td>
+    </tr>
+    <tr>
+      <td>行動意図の表明</td><td>＋</td>
+      <td></td><td></td><td></td><td>●</td>
+      <td class="small">計画的行動理論（Ajzen '91）</td>
+    </tr>
+    <tr>
+      <td>質問・根拠要求</td><td>(−)</td>
+      <td>○</td><td>○</td><td></td><td></td>
+      <td class="small">文脈依存（確認質問／批判質問）</td>
+    </tr>
+    <tr style="background:#f0f6f2;"><td colspan="7"><strong>音声</strong></td></tr>
+    <tr>
+      <td>F0・音量・発話速度・ポーズ長</td><td>±</td>
+      <td>△</td><td>△</td><td>△</td><td>△</td>
+      <td class="small">不確実性・関与の物理指標（Scherer '03）</td>
+    </tr>
+  </table>
+
+  <p class="small" style="margin-top:0.3em;">
+    凡例： <strong>🎯</strong> 主仮説で検証　<strong>●</strong> 主対応　<strong>○</strong> 副対応　<strong>△</strong> 全次元への寄与（関与・覚醒度）
+  </p>
+
+  <blockquote style="margin-top:0.3em; font-size:0.85em;">
+    各次元はモーダルを横断して支えられる構造 → <strong>多モーダル統合の意義</strong> を担保<br>
+    重み w<sub>i</sub><sup>(k)</sup>（式1）は <span class="hl">この対応関係を符号制約として Ridge回帰で同定</span>
+  </blockquote>
+
+  <aside class="notes">⏱1:00 — 5モーダルの各客観指標が、納得度4次元のどこに対応するかを整理した表です。たとえばうなずきは同意の主指標で、これはAllwoodとMorencyの研究で確立されています。認知的不均衡（AU4+AU7）は理解の負指標で、D'Melloの認知的不均衡モデルが根拠。行動意図の表明はAjzenの計画的行動理論からコミットメントに対応します。重要なのは、各次元が単一モーダルではなく複数モーダルで支えられている点で、ここに多モーダル統合の意義があります。音声特徴は特定次元というより全般的な関与・覚醒度の指標として位置付けます。式1の重みはこの対応関係を符号制約として、Ridge回帰で実データから同定します。</aside>
+</section>
+
+<!-- 10 -->
+<section>
+  <h2>客観 × 主観の照合方法</h2>
+  <p><strong>同一セグメント上で客観時系列と主観4次元を対応付け、予測可能性を評価</strong></p>
+  <ul>
+    <li>30〜60秒の同一セグメントで、客観指標の時系列 ↔ 主観4次元スコアを対応</li>
+    <li><strong>Spearman 相関</strong>で関連を確認 → <strong>Ridge / GBDT 回帰</strong>で各次元を予測</li>
+    <li>評価軸：どの客観指標が、どの主観次元を、どれだけ説明できるか</li>
+  </ul>
+  <p class="small"><strong>なぜこの手法か（N≈20・指標21・順序尺度に合わせて選定）</strong></p>
+  <ul>
+    <li><strong>Spearman</strong>：7件法＝順序尺度。直線性を仮定せず<strong>単調関係</strong>を頑健に確認（仮説の方向性チェック）</li>
+    <li><strong>Ridge</strong>：指標21 vs 被験者≈20の高次元＋多重共線性に<strong>L2縮小</strong>で対応。係数が解釈でき線形加法仮説と整合</li>
+    <li><strong>GBDT</strong>：指標間の<strong>非線形・交互作用</strong>を自動で捕捉。Ridgeとの差＝非線形がどれだけ効くかの上限見積もり</li>
+    <li>妥当性確保：<strong>被験者単位の交差検証（LOSO-CV）</strong>＋<strong>多重比較補正（FDR）</strong>でリーク・偽陽性を抑制</li>
+  </ul>
+  <blockquote>
+    主仮説（検証の焦点）<br>
+    🎯 <span class="hl">AU4+AU7（認知的不均衡）と「理解」次元の負相関</span><br>
+    🎯 <span class="hl">うなずき頻度と「同意」次元の正相関</span>
+  </blockquote>
+  <aside class="notes">⏱1:10 — 同じ30〜60秒のセグメント上で客観指標の時系列と主観4次元を対応付け。手法はデータと規模に合わせて選定。主観は7件法の順序尺度なのでSpearmanで直線性を仮定せず単調な関連を頑健に確認。予測は、指標21に対し被験者20程度と高次元で指標も相関するため、L2縮小で安定し解釈しやすいRidgeを土台に、GBDTで非線形・交互作用も捕捉。両者の差から非線形の効きも分かる。同一被験者のセグメントは相関するので交差検証は被験者単位（LOSO）、多数の相関には多重比較補正をかけ水増し・偽陽性を防ぐ。とくに認知的不均衡と理解の負相関、うなずきと同意の正相関を主仮説として検証します。</aside>
+</section>
+
+<!-- 11 -->
+<section>
+  <h2>現状の進捗（4〜5月の実装）</h2>
+  <p><strong>基盤実装からパイロットデータ取得まで前進</strong></p>
+  <ul>
+    <li>✅ 観察分析ダッシュボード <code>observation-analysis.html</code> 新規実装</li>
+    <li>✅ うなずき検出のオフライン検証環境 <code>nod-fp-debug.html</code>＋回帰テスト用 <code>nod_debug_*.json</code></li>
+    <li>✅ 発話音響分析パイプライン <code>analyze_speech.py</code>（librosa＋Whisper＋LLM分類）</li>
+    <li>✅ 観察室 <code>observation-room.html</code> を機能拡張</li>
+    <li>✅ パイロットデータの取得を開始（自身による録画 <strong>4セッション・計約150秒</strong>）</li>
+    <li>✅ <strong>頷き・表情検出器の精度評価</strong>を実施し、検出基盤の実用性を確認（次ページ）</li>
+  </ul>
+  <aside class="notes">⏱1:00 — この数か月で分析ダッシュボード、うなずき検証環境、発話音響分析を実装し、観察室も拡張。すでにパイロットデータを取り始め、頷き・表情検出器のオフライン精度評価まで進めています。次のスライドで結果を示します。</aside>
+</section>
+
+<!-- 11.5 検出精度の評価結果 -->
+<section>
+  <h2>客観指標の検出精度 — パイロット評価</h2>
+  <p><strong>頷き・表情の自動検出が実用レベルで動作することを確認</strong></p>
+
+  <div style="display:flex; gap:1.2em; margin-top:0.3em;">
+    <div style="flex:1.05;">
+      <h3>① 頷き検出（鼻先Y座標差分＋しきい値）</h3>
+      <table>
+        <tr><th>セッション</th><th>TP</th><th>FP</th><th>FN</th><th>F1</th></tr>
+        <tr><td>Session 1</td><td>4</td><td>0</td><td>1</td><td>0.889</td></tr>
+        <tr><td>Session 2</td><td>6</td><td>0</td><td>0</td><td>1.000</td></tr>
+        <tr><td>Session 3</td><td>6</td><td>2</td><td>1</td><td>0.800</td></tr>
+        <tr><td>Session 4</td><td>22</td><td>0</td><td>0</td><td>1.000</td></tr>
+        <tr><td><strong>micro avg</strong></td><td><strong>38</strong></td><td><strong>2</strong></td><td><strong>2</strong></td><td class="hl"><strong>0.950</strong></td></tr>
+      </table>
+      <ul>
+        <li>Precision = 0.950、Recall = 0.950、許容窓 ±0.5秒</li>
+        <li>4セッション全38件の頷きを高精度で検出</li>
+      </ul>
+    </div>
+    <div style="flex:1.15;">
+      <h3>② 表情分類（face-api.js, 7感情, 608frame）</h3>
+      <table>
+        <tr><th>クラス</th><th>P</th><th>R</th><th>F1</th><th>n</th></tr>
+        <tr><td><strong>happy</strong></td><td><strong>0.960</strong></td><td>0.701</td><td class="hl"><strong>0.810</strong></td><td>378</td></tr>
+        <tr><td><strong>neutral</strong></td><td>0.485</td><td class="hl"><strong>0.921</strong></td><td>0.635</td><td>140</td></tr>
+        <tr><td>angry</td><td><strong>1.000</strong></td><td>0.171</td><td>0.293</td><td>70</td></tr>
+        <tr><td>sad</td><td>0.296</td><td>0.800</td><td>0.432</td><td>20</td></tr>
+      </table>
+      <ul>
+        <li>Accuracy = 0.694、Cohen's κ = 0.500（moderate）</li>
+        <li><strong>happy F1=0.810</strong>、neutral Recall=0.921</li>
+      </ul>
+    </div>
+  </div>
+
+  <blockquote style="margin-top:0.4em;">
+    <strong>結論：</strong> 頷き検出は <strong>F1=0.950</strong>（全38件中36件正解）、表情検出は <strong>happy/neutral の主要表情を高精度で識別</strong>。<br>
+    多モーダル統合の基盤として十分な性能を有することを実証
+  </blockquote>
+
+  <aside class="notes">⏱1:10 — パイロットデータで頷きと表情の検出精度を評価しました。頷きは4セッション・計150秒で38件の頷きが含まれ、F1は0.950、Precision・Recallともに0.95と高精度を達成。誤検出は全体でわずか2件、見逃しも2件のみで、鼻先Y座標の単純差分でも実用に耐えることを示しました。表情はface-api.jsで608フレームを評価し、最も多く出現する happy を F1=0.810 で、neutral を Recall=0.921 で検出。Cohen's κ も moderate に達し、検出基盤として十分動作することが確認できました。angry や sad では混同が見られますが、これは出現頻度が低く、改善余地として整理しています。</aside>
+</section>
+
+<!-- 12 -->
+<section>
+  <h2>実験計画</h2>
+  <p><strong>デザイン：被験者内の<u>妥当性検証スタディ</u></strong><span class="small">（操作実験ではなく、客観指標を主観尺度で検証）</span></p>
+  <div class="arch">
+
+    <div class="arch-box">
+      <span class="role">VR操作説明＋インフォームドコンセント</span>
+      <span class="name">① 導入・同意</span>
+    </div>
+
+    <div class="arch-arrow">▼</div>
+
+    <div class="arch-box">
+      <span class="role">頭部・表情・音声・対話を自動記録</span>
+      <span class="name">② VR教室で授業を受講（15分）</span>
+    </div>
+
+    <div class="arch-arrow">▼</div>
+
+    <div class="arch-box">
+      <span class="role">録画を30〜60秒で見返し、納得度4次元を7件法で自己評価</span>
+      <span class="name">③ 事後 retrospective 回答</span>
+    </div>
+
+    <div class="arch-arrow">▼</div>
+
+    <div class="arch-box io">
+      <span class="role">Spearman 相関 → Ridge/GBDT 予測</span>
+      <span class="name">④ 客観 × 主観を同一セグメント上で照合</span>
+    </div>
+
+  </div>
+
+  <ul>
+    <li>参加者：データサイエンス学部の学生 <strong>N≈20</strong>（パイロット）</li>
+    <li>🎯 検証する主仮説：<strong>AU4+AU7（認知的不均衡）↔「理解」（負）</strong> ／ <strong>うなずき ↔「同意」（正）</strong></li>
+    <li>今後の段階：① 相関確認（本実験）→ ② 納得度低下区間の検出精度<sup class="r">[4]</sup> → ③ 生理指標（EDA・心拍・瞳孔）で拡張</li>
+  </ul>
+  <div class="refs">[4] D'Mello &amp; Graesser (2012) <em>Dynamics of affective states during complex learning.</em> Learning and Instruction, 22(2), 145–157.</div>
+  <aside class="notes">⏱0:50 — これは何かを操作する実験ではなく、客観指標が主観尺度をどれだけ説明できるかを確かめる被験者内の妥当性検証スタディです。流れは、導入・同意のあとVR教室で15分の授業、頭部・表情・音声・対話を自動記録。受講後に録画を30〜60秒で見返し納得度4次元を自己評価し、最後に客観と主観を同一セグメント上で照合。学生およそ20名のパイロットで、とくに認知的不均衡↔理解の負相関、うなずき↔同意の正相関を主仮説に検証します。今後は検出精度評価、生理指標の追加へ広げます。</aside>
+</section>
+
+<!-- 13 -->
+<section>
+  <h2>将来像 — 教師支援への応用</h2>
+  <blockquote>最終ゴール：観察室にリアルタイム納得度ヒートマップを提示</blockquote>
+  <ul>
+    <li>教師の観察室ビュー上に、学習者ごと・時系列の<strong>納得度ヒートマップ</strong>を可視化</li>
+    <li>納得度が下がった瞬間に教師へフィードバック → <strong>その場で説明し直す</strong>アシスト機能（<code>assistPolicy</code>）</li>
+    <li>「測る」研究から<span class="hl">「教育現場を支える」システム</span>へ</li>
+  </ul>
+  <aside class="notes">⏱0:40 — 最終的に目指すのは教師支援。観察室の画面に誰がいつ納得度を下げたかをヒートマップで可視化し、教師がその場で説明をやり直せるようにします。測るだけでなく教育現場を支えるところまで持っていきたい。</aside>
+</section>
+
+<!-- 14 -->
+<section>
+  <h2>まとめ</h2>
+  <ul>
+    <li>納得度は理解・同意・受容・コミットメントの多次元状態だが、従来はリアルタイム・客観的に測れなかった</li>
+    <li><strong>WebXRのVR教室</strong>上に観察室と分析モジュールを実装し、<strong>5モーダルを自動測定</strong>する基盤を構築</li>
+    <li><strong>4次元リッカート尺度</strong>と照合し、どの指標がどの次元を予測するかを検証（主仮説：認知的不均衡↔理解、うなずき↔同意）</li>
+    <li>基盤実装とパイロットデータ取得まで前進、これから<strong>検証フェーズ</strong>へ</li>
+  </ul>
+  <p class="center" style="margin-top:0.8em;"><strong>ご清聴ありがとうございました</strong></p>
+  <aside class="notes">⏱0:40 — 納得度はリアルタイムに測りにくい多次元状態でしたが、VR教室上に5モーダルを自動計測する基盤を構築し、4次元の主観尺度と照合して妥当性を検証します。基盤とデータ取得は前進、これから本格的な検証に入ります。ありがとうございました。</aside>
+</section>
+
+</div></div>
+<div class="footer">DICOMO2026 / 藤井優羽・中村亮太</div>
+
+<script src="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/dist/reveal.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/plugin/notes/notes.js"></script>
+<script>
+  Reveal.initialize({
+    hash: true,
+    slideNumber: 'c/t',
+    transition: 'slide',
+    width: 1280,
+    height: 720,
+    margin: 0.06,
+    plugins: [ RevealNotes ]
+  });
+</script>
+</body>
+</html>

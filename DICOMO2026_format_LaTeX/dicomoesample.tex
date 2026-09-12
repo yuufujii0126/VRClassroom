@@ -1,0 +1,79 @@
+\documentclass[English]{dicomopapers}
+
+\usepackage[dvips]{graphicx}
+\usepackage{latexsym}
+
+\def\Underline{\setbox0\hbox\bgroup\let\\\endUnderline}
+\def\endUnderline{\vphantom{y}\egroup\smash{\underline{\box0}}\\}
+\def\|{\verb|}
+
+\begin{document}
+
+\title{DICOMO2026 Paper Format}
+
+\affiliate{IPSJ}{Information Processing Society of Japan}
+\paffiliate{DICOMO}{DICOMO2026}
+
+
+\author{TARO JOHO}{IPSJ}
+\author{HANAKO SHORI}{DICOMO}
+
+\begin{abstract}
+  This document is a guide to produce the final camera-ready manuscript
+  of a paper to be submitted to DICOMO2026, using Japanese {\LaTeX} and
+  special style files. Since the document itself is produced with the
+  style files, it will help you to refer its source file which is
+  distributed with the style files. These style files are based on the
+  style files for IPSJ Journal and Transactions (available on
+  https://www.ipsj.or.jp/english/jip/submit/style.html ), so please refer
+  them to get more information about {\LaTeX} commands, etc.
+    {\bf \underline{In addition, please use not the format indicated to the
+        above}}
+    {\bf \underline{mentioned manuscript writing guidance but this format. }}
+\end{abstract}
+
+\maketitle
+
+%1
+\section{Paper Formatting}
+There is no restriction on the number of pages. Submitted papers
+with full-paper style may be promoted for IPSJ journal.
+You can see IPSJ Journal style guide in
+the following URL\cite{webpage}.
+
+\noindent
+https://www.ipsj.or.jp/english/jip/submit/ronbun\_e\_prms.html
+
+Based on the above guideline, this format is customized for DICOMO2026
+to suppress output of IPSJ-style header/footer and keep integrity with
+MS Word based format.
+These files are redistributed under permission of IPSJ.
+
+For DICOMO 2026, please be aware of the followings.
+\begin{itemize}
+  \item Style files are customized.
+        \begin{itemize}%{
+          \item[]\tt dicomopapers.cls
+        \end{itemize}%}
+  \item Please specify documentclass as\\
+        \|\documentclass[english]{dicomopapers}|
+  \item Please do not make biography section.
+\end{itemize}
+%}
+
+To reduce our effort to make proceedings,
+{\bf \underline{please read}}\\
+{\bf \underline{style guide carefully. Please don't ask IPSJ for}}\\
+{\bf \underline{help on this style file. DICOMO2026 committee}}\\
+{\bf \underline{also cannot help on your environment in most}}\\
+{\bf \underline{cases.}}
+
+\begin{thebibliography}{99}
+  \bibitem{webpage}
+  Information Processing Society of Japan (IPSJ): Journal of Information
+  Processing (JIP): Information for Authors, IPSJ(online)
+  \urle{https://www.ipsj.or.jp/english/\\jip/submit/ronbun\_e\_prms.html}
+  \refdatee{2026-04-15}.
+\end{thebibliography}
+
+\end{document}

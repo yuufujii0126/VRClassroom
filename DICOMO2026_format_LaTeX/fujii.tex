@@ -1,0 +1,479 @@
+\documentclass[Japanese]{dicomopapers}
+
+\usepackage[dvipdfmx]{graphicx}
+\usepackage{latexsym}
+\usepackage{tikz}
+\usetikzlibrary{arrows.meta,positioning,fit,backgrounds}
+
+\def\Underline{\setbox0\hbox\bgroup\let\\\endUnderline}
+\def\endUnderline{\vphantom{y}\egroup\smash{\underline{\box0}}\\}
+\def\|{\verb|}
+
+\begin{document}
+
+% 和文表題
+\title{VR教室における学習者の納得度推定のための非言語行動分析システムの設計と予備的検討}
+% 英文表題
+\etitle{Design and Preliminary Evaluation of a Nonverbal Behavior Analysis System for Estimating Learner Conviction in VR Classrooms}
+
+% 所属ラベルの定義
+\affiliate{MUDS}{武蔵野大学 データサイエンス学部\\
+  Faculty of Data Science, Musashino University}
+
+\author{藤井 優羽}{Yu Fujii}{MUDS}
+\author{中村 亮太}{Ryota Nakamura}{MUDS}
+
+\begin{abstract}
+  本研究は，1対1チュータリング場面における学習者の納得度を，非言語行動・音声プロソディ・発話内容から自動推定するための枠組みを提示する．
+  納得感を多面的な内面状態として捉える先行研究の知見に倣いつつ，先行研究を体系的に調査して言語・対話・音声・表情・頭部動作・視線・姿勢に関わる観測指標を抽出し，納得度を「理解・同意・受容・コミット」の4観点に整理して，観測指標と4観点の関連度マトリクスを構築した．
+  これらの指標を時系列に取得する納得度推定のための自動計測システムを，視覚特徴抽出，音声特徴抽出，言語特徴抽出の3系統からなるパイプラインとして実装し，共通時刻軸上で統合JSONとして保存する形式を設計した．
+  本実装に先立ち，講師・学習者・観察者の3者によるWebベース観察ルームを構築し，記録した複数セッションについてMediaPipeベース簡易抽出器による予備観測を実施した．
+  表情カテゴリ分布や頷き率はセッション間で大きく変動し，提案指標群がセッション差異を捉え得る潜在的能力を持つことが示唆された．
+  さらに，観点別納得度をシグモイド関数による線形重み付き和として表現し，その観点重み付き和として統合納得度を求める二段階の定式化を提案するとともに，1対1チュータリングを対象とした重み学習および妥当性検証の実験計画を示した．
+\end{abstract}
+
+% 表題などの出力
+\maketitle
+
+\section{はじめに}
+
+近年，オンライン形態の授業が広く普及し，講師が画面越しに学習者と対峙する場面が増えている．しかし遠隔環境では，限られた画角・解像度のカメラ映像から学習者の表情・頷き・姿勢といった非言語的手がかりを把握しづらく，学習者の理解状況や納得の度合いを読み取って授業進行を細やかに調整することが対面時に比べて難しい．こうした課題は，学習者の状態把握が指導効果を直接左右する1対1チュータリングにおいて特に顕著である．本研究は，このようなオンライン環境における学習支援を目的として，講師・学習者・観察者がWeb上のバーチャル空間で会する観察環境と，学習者の非言語行動を自動計測するシステムを構築する．
+
+1対1チュータリングは，学習者の理解状況に応じて個別最適な指導が可能な学習形態であるが，その効果は学習者の納得の度合いに大きく左右される．山地・橋本\cite{Yamaji2012}が論じるように，納得感とは「他者とのやり取りの中で，学習の場や自身の状況を適切に意味づけ，納得していく過程」であり，「教えた」「理解した」だけでは捉えきれない複合的な内面状態である．授業中に学習者が表面的な頷きや返答を示しても，内容を実際に理解し，講師の説明に同意し，自らの学びとして受容し，今後の学習行動へとつなげているとは限らない．この乖離を埋めるには，学習者の納得度を授業中に推定し，講師が必要なフォローアップを行える仕組みが望ましい．
+
+しかし納得度は学習者の内面的状態であり，外部から直接観測することはできない．先行研究は，表情や頷きなどの顔・頭部動作\cite{Craig2008}，視線\cite{Kendon1967}，音声プロソディ\cite{PonBarry2008}など，単一モダリティに焦点を当ててきた．しかし，理解はしているが同意していない，同意はしているが自らの学びとしては受容していない，といった内的状態の差を単一指標で弁別することは難しい．感情コンピューティング\cite{Picard1997}の枠組みにおいても，納得度のような複合状態の推定には多モーダル情報の統合が不可欠である．
+
+本研究は，1対1チュータリング場面における学習者の納得度を自動推定するための基盤整備として，(1) 表情・頭部動作・視線・音声プロソディ・発話内容に関する計21指標の先行研究を体系的に調査し，(2) 納得度を「理解」「同意」「受容」「コミット」の4観点に整理して21指標との対応関係を示し，(3) これらをWebブラウザ上で実時間計測する本システムを実装し，(4) 各指標の計測精度評価方法を設計するとともに，(5) 4観点を統合した納得度の定式化案を提示する．
+
+\section{関連研究}
+
+学習者の納得度に関連すると考えられる観測指標について，先行研究から計21指標を抽出し，言語・対話・音声・表情・頭部・視線・姿勢の7種別に整理した．本章では各種別の代表的指標と関連文献を概観する．次章では，これら21指標を本研究で導入する4観点（理解・同意・受容・コミット）に対応づける．
+
+\subsection{言語的指標}
+
+発話の言語的特徴は，対話における同意・不同意，理解状態，確信度，意見・行動意図の変化を反映する手がかりとして広く研究されてきた．Galley et al.\cite{Galley2004}は，会議対話における同意と不同意の自動分類を提案し，肯定的同意表現の出現が議論の合意形成と相関することを示した．不同意・反論表現については，Abbott et al.\cite{Abbott2011}が議論コーパスを用いて反論的発話の言語的特徴量を整理している．理解確認に関しては，Clark \& Brennan\cite{Clark1991}が「共通基盤の構築」モデルを提示した．逆に聞き返し・修復要求は理解失敗の徴候であり，Schegloff et al.\cite{Schegloff1977}の会話分析がその機能を整理している．
+
+不確実性表現については，Rubin et al.\cite{Rubin2006}がテキスト中の確信度・不確実性カテゴリを体系化した．スタンス・意見変化については，Walker et al.\cite{Walker2012}の議論コーパスIACおよびTan et al.\cite{Tan2016}のChangeMyView研究が，対話を通じて参加者の意見が変化する条件と説得戦略の関係を分析している．行動意図・コミットメントについては，Ajzen\cite{Ajzen1991}の計画的行動理論における意図形成，O'Keefe\cite{OKeefe2002}の説得理論，Traum \& Allen\cite{Traum1994b}の対話における社会的責任の理論が，言語的コミットメント表明が後続行動を予測する根拠を与えている．
+
+\subsection{対話構造に関する指標}
+
+対話レベルの指標は，個別発話よりも交互作用パターンに着目する．Graesser \& Person\cite{Graesser1994}は1対1チュータリング場面における質問の生起パターンを分析し，学習者からの根拠要求や"why"型質問が必ずしも理解度の高さを示さず，多くは混乱や情報不足の徴候であることを示した．応答遅延・沈黙については，Heldner \& Edlund\cite{Heldner2010}が大規模対話コーパスを用いて発話間ギャップを定量化した．文脈依存ではあるが，過度の応答遅延は迷い・不確実性の徴候として解釈される．
+
+\subsection{音声プロソディの指標}
+
+音声プロソディは感情・関与・確信度の手がかりとして長く研究されてきた．Eyben et al.\cite{Eyben2016}は感情コンピューティング向けの標準音響特徴量セットGeMAPSを定義し，基本周波数F0と音量・エネルギーが中核指標として扱われている．ポーズ長については，Goldman-Eisler\cite{GoldmanEisler1968}の古典的研究が思考・計画とポーズの関係を示し，Heldner \& Edlund\cite{Heldner2010}が定量化を進めている．確信度プロソディに特化した研究としては，Pon-Barry\cite{PonBarry2008}が確信／不確実発話の音響的特徴を分析し，Litman \& Forbes-Riley\cite{Litman2006}が教育対話における学習者感情の音声認識を試みた．
+
+\subsection{顔表情の指標}
+
+顔表情はEkman \& Friesen\cite{Ekman1978}のFACS（Facial Action Coding System）以来，標準化されたAction Unit（AU）の組合せで記述される．笑顔（AU6 + AU12）は典型的なpositive affectの徴候とされる．眉ひそめ（AU4）は，Craig et al.\cite{Craig2008}のAutoTutor研究において，困惑や集中の手がかりとして報告されている．特に困惑の表情としてはAU4 + AU7の組合せが指摘されており，D'Mello et al.\cite{DMello2014}は，困惑が認知的不均衡の徴候であって，適切に解消されれば学習を促進し得ることを示した．
+
+\subsection{頭部動作・視線・姿勢の指標}
+
+頷きは理解・同意のフィードバックとして機能することがAllwood et al.\cite{Allwood1992}により対話意味論的に整理され，Morency et al.\cite{Morency2007}は文脈情報を活用した頷き予測モデルを提案した．首振りについては，Kendon\cite{Kendon2002}が頭部動作の意味機能を体系化している．視線については，Kendon\cite{Kendon1967}による社会的機能の整理が古典的基盤を提供し，話者・対象への視線が注意・関与の指標として用いられる．姿勢については，Mehrabian\cite{Mehrabian1971}が前傾・身体向きをimmediacy（親和性）の手がかりとして提示している．
+
+\subsection{本研究の位置づけ}
+
+以上の関連研究は，各モダリティ単独の範囲では指標と理解・同意・確信度といった諸状態との対応を詳細に検討してきた．しかし，言語・対話・音声・表情・頭部動作・視線・姿勢に及ぶ複数モダリティを同一の枠組みで統合し，納得度という複合的な内面状態を体系的に推定した例は限られている．また，納得感を「理解・同意・受容・コミット」のように観点を分けて捉え，各観点に対応する観測指標を整理した枠組みも，管見の限り提示されていない．
+
+加えて，これらの先行研究は主として対面状況や録画データを対象としており，Web上のバーチャル空間における講師・学習者・観察者の3者環境を前提とした納得度の計測・推定を扱った例は乏しい．オンライン学習が急速に普及した現状にもかかわらず，遠隔環境で取得可能な指標を統合し自動計測する取り組みは依然として萌芽段階にある．
+
+これに対し本研究は，(i) 単一モダリティに閉じないマルチモーダル統合の枠組み，(ii) 納得度を4観点に分解し観測指標と対応づけた構成，(iii) バーチャル空間を含むオンライン環境を前提とした自動計測パイプラインの実装，の3点において先行研究と差別化される．
+
+\section{納得度の4観点と観測指標の対応関係}
+\label{sec:matching}
+
+\subsection{4観点の定義}
+
+本研究では，納得度を構成する内的状態を次の4観点に整理する．
+
+\begin{itemize}
+\setlength{\itemsep}{0pt}
+\item \textbf{理解}：講師の説明内容そのものを把握できたか．
+\item \textbf{同意}：把握した内容を妥当・正しいと判断しているか．
+\item \textbf{受容}：当該内容を自身の知識・判断として取り込み，必要に応じて従前の見解を更新したか．
+\item \textbf{コミット}：受容した内容を今後の学習・行動に結び付ける意図を持つか．
+\end{itemize}
+
+この区分は，「教えた」「分かった」だけでは捉えきれない学習者の内的状態を段階的に分離するための作業的枠組みである．特に「受容」と「コミット」は，Ajzen\cite{Ajzen1991}の計画的行動理論における態度と行動意図の区別，およびO'Keefe\cite{OKeefe2002}の説得研究における態度変容と行動意図の差異を参照しており，「同意するが実行はしない」状態を捉えるための要点となる．
+
+\subsection{21指標と4観点の対応}
+
+\S2で整理した21指標と4観点の関連度を表\ref{tab:matching}に示す．関連度は，★★★：強い関連，★★：中程度，★：弱い関連，"$-$★★"等：当該観点に対し逆方向（観測値が大きいほど該当観点が下がる方向）の手がかり，"---"：関連性が薄いか文脈依存，として記載した．
+
+\begin{table}[t]
+\centering
+\caption{21指標と4観点の関連度}
+\label{tab:matching}
+\scriptsize
+\begin{tabular}{lcccc}
+\hline
+観測指標 & 理解 & 同意 & 受容 & コミット \\
+\hline
+同意表現「なるほど」 & ★★ & ★★★ & ★★ & ★ \\
+不同意・反論表現 & ★ & $-$★★★ & $-$★★ & $-$★ \\
+理解・確認応答 & ★★★ & ★★ & ★ & --- \\
+聞き返し・修復要求 & $-$★★★ & --- & --- & --- \\
+不確実性・hedge & $-$★★ & $-$★★ & $-$★ & $-$★ \\
+スタンス・意見変化 & ★ & ★★ & ★★★ & ★★ \\
+コミット表明 & ★ & ★★ & ★★ & ★★★ \\
+\hline
+質問・根拠要求 & $-$★★ & $-$★ & --- & --- \\
+応答遅延・沈黙 & $-$★★ & $-$★ & $-$★ & --- \\
+\hline
+F0（声の安定） & ★★ & ★★ & ★ & ★ \\
+音量・エネルギー & ★ & ★ & ★ & ★★ \\
+発話速度 & ★ & ★ & --- & ★ \\
+ポーズ長 & $-$★★ & $-$★ & $-$★ & --- \\
+確信度プロソディ & ★★ & ★★ & ★ & ★ \\
+\hline
+笑顔（AU6+12） & ★ & ★★ & ★ & ★ \\
+眉ひそめ（AU4） & $-$★★ & $-$★ & --- & --- \\
+困惑（AU4+7） & $-$★★★ & $-$★ & --- & --- \\
+\hline
+うなずき & ★★★ & ★★★ & ★ & --- \\
+首振り & $-$★ & $-$★★★ & $-$★★ & $-$★ \\
+話者への視線 & ★★ & ★ & --- & --- \\
+前傾・身体向き & ★ & ★ & ★★ & ★★ \\
+\hline
+\end{tabular}
+\end{table}
+
+\subsection{表から読み取れる構造}
+
+表\ref{tab:matching}から次の3点を指摘できる．第一に，観測指標と4観点は\textbf{多対多の関係}にある．例えば「うなずき」は理解と同意の双方に強く関連するが，受容には弱く，コミットの直接的手がかりとはなりにくい．逆に「スタンス・意見変化」は受容と最も強く関連するが，それ自体は理解や同意の高さも前提とする．単一指標から特定観点を一意に推定することは困難である．
+
+第二に，\textbf{理解と同意には観測指標が比較的多く配置されるのに対し，受容とコミットは関連指標が限定的}である．特にコミットは「コミット表明」「スタンス変化」「前傾姿勢」「音量」程度に偏り，対面・短時間の観測のみではコミットの実在性を検証しにくい．したがって，コミット推定は事後の自己報告や行動データとの照合を前提とせざるを得ない．
+
+第三に，\textbf{単一モダリティに依存した推定は脆弱}である．例えば「うなずき」のみで同意を判定する場合，社交的相槌（理解せずとも同意せずとも頷く）との弁別ができない．これに表情の困惑（AU4+7），音声の確信度プロソディ，および理解・確認応答の語彙的手がかりを組み合わせることで，「理解の伴う同意」と「形式的な同意」を分離できる．本研究が目指すマルチモーダル統合は，4観点それぞれを安定的に推定するための必須要件であると言える．
+
+\section{納得度推定のための自動計測システムの実装}
+
+\subsection{システム全体構成}
+
+本システムは，1対1チュータリングセッションを記録した動画ファイル（顔映像）および音声ファイル（チャネル分離済の講師・学習者音声）を入力とし，\S\ref{sec:matching}で示した21指標の時系列値を出力するパイプラインである．処理は，(i) 視覚特徴抽出，(ii) 音声特徴抽出，(iii) 言語特徴抽出 の3系統が独立に動作し，最終段で共通の時刻軸に統合する（図\ref{fig:pipeline}）．オフライン非同期実行を基本とし，将来的なオンライン版（チューターへのリアルタイムフィードバック）に拡張可能な構成とした．
+
+\begin{figure}[t]
+\centering
+\begin{tikzpicture}[
+  node distance=0.4cm and 0.5cm,
+  box/.style={draw, rounded corners, minimum height=0.6cm, minimum width=2.0cm, font=\scriptsize, align=center, fill=white},
+  arr/.style={-{Stealth[length=1.5mm]}, thick},
+  font=\scriptsize
+]
+\node[box, fill=blue!8] (video) {顔映像};
+\node[box, fill=blue!8, below=of video] (audio1) {音声};
+\node[box, fill=blue!8, below=of audio1] (audio2) {音声};
+
+\node[box, fill=green!10, right=of video] (face) {MediaPipe\\FaceMesh};
+\node[box, fill=green!10, right=of audio1] (sml) {librosa};
+\node[box, fill=green!10, right=of audio2] (asr) {Whisper +\\ModernBERT};
+
+\node[box, fill=red!10, right=of face] (visf) {視覚 7指標};
+\node[box, fill=red!10, right=of sml] (audf) {音声 5指標};
+\node[box, fill=red!10, right=of asr] (lexf) {言語・対話 9指標};
+
+\node[box, fill=purple!10, below=0.9cm of asr, minimum width=6.0cm] (json) {統合JSON（21指標 $\times$ 時系列, $\Delta t = 100$\,ms）};
+
+\draw[arr] (video) -- (face);
+\draw[arr] (audio1) -- (sml);
+\draw[arr] (audio2) -- (asr);
+\draw[arr] (face) -- (visf);
+\draw[arr] (sml) -- (audf);
+\draw[arr] (asr) -- (lexf);
+
+\draw[arr] (visf.east) -- ++(0.35,0) |- (json.east);
+\draw[arr] (audf.east) -- ++(0.35,0) |- (json.east);
+\draw[arr] (lexf.east) -- ++(0.35,0) |- (json.east);
+\end{tikzpicture}
+\caption{本システムのパイプライン構成．3系統の特徴抽出器が独立に動作し，共通時刻軸の統合JSONに集約される．}
+\label{fig:pipeline}
+\end{figure}
+
+\subsection{言語特徴抽出}
+
+言語的指標（7種）と対話的指標（2種）は，講師・学習者の各音声チャネルに音声認識（ASR）を適用して書き起こしを生成したのち，得られたテキストを事前学習済み日本語言語モデルで分類して算出する．ASRには発話単位のword-level timestampを保持するWhisper\cite{Radford2023}を用い，分類にはModernBERT-Ja系列の埋め込みモデル（Ruri v3）を採用する．同意，不同意，grounding，hedge，コミット表明，修復要求の各カテゴリを表す自然文プロンプトと発話埋め込みとのコサイン類似度をゼロショット分類スコアとして発話単位に取得する\cite{Galley2004,Clark1991,Rubin2006,Schegloff1977,Ajzen1991}．スタンス・意見変化は，学習者発話を時間区間に分割し，区間ごとの同意スコア極性の遷移として検出する\cite{Walker2012,Tan2016}．対話指標のうち応答遅延は，講師発話終了時刻と次の学習者発話開始時刻のギャップとして算出する\cite{Heldner2010}．
+
+\subsection{音声特徴抽出}
+
+音声プロソディ指標（5種）は，講師・学習者の各波形にPythonの音響解析ライブラリlibrosaを適用して算出する\cite{Eyben2016}．基本周波数F0はpYIN法によりC2--C7（約65〜2093\,Hz）の抽出範囲でフレーム単位（10\,ms）に算出し，発話単位で平均と標準偏差を保持する．音量はRMSエネルギーから取得する．発話速度はWhisperのword-level timestampから1秒あたり認識語数として近似する．ポーズ長は，RMSとonset検出に基づく無音区間長として測定する\cite{GoldmanEisler1968}．確信度プロソディは，F0安定性とzero-crossing rate（ZCR）等からなる複合スコアとして算出し，Pon-Barry\cite{PonBarry2008}の確信／不確実発話の弁別特徴に倣う．本系統で取得される指標の時系列例を図\ref{fig:prosody}に示す．
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=\columnwidth]{fig_prosody.png}
+\caption{音声プロソディ抽出の動作例．上段：基本周波数F0（青）とF0標準偏差（橙）の時系列，下段：強度RMS（緑）と発話速度（紫）の時系列．画面上部に平均ピッチ・ピッチ揺らぎ・発話速度・最大ポーズ長・有声フレーム比が集計表示される．}
+\label{fig:prosody}
+\end{figure}
+
+\subsection{視覚特徴抽出}
+
+表情指標（3種）と頭部・視線・姿勢指標（4種）は，学習者の顔映像にMediaPipe FaceMesh\cite{Kartynnik2019}を適用し，フレーム単位（30\,fps）で468点の3次元顔ランドマークを抽出する．表情カテゴリは，FACS\cite{Ekman1978}の知見を参照しつつ，ランドマーク間の幾何学的特徴量から推定する．具体的には，口角挙上量から笑顔（AU6+AU12相当）を，眉間距離の縮小から眉ひそめ（AU4相当）を，眉ひそめと瞼開度低下の組合せから困惑（AU4+AU7相当）を合成スコアとして算出する\cite{Craig2008,DMello2014}．頭部姿勢のpitch / yaw / rollは，FaceMeshの基準点群から推定し，ピッチ角の極値検出で頷きを\cite{Allwood1992,Morency2007}，ヨー角の極値検出で首振りを判定する\cite{Kendon2002}．頭部動作の抽出結果の可視化例を図\ref{fig:head}に示す．視線については，両眼の虹彩位置と眼窩中心の相対座標から推定し，画面中央$\pm 10\,$degを「話者・対象への注視」として比率を算出する\cite{Kendon1967}．視線の取得結果の可視化例を図\ref{fig:gaze}に示す．姿勢については，顔ランドマークから推定したカメラ距離（z軸方向）の時系列から，初期値に対する接近量を前傾の手がかりとして算出する\cite{Mehrabian1971}．FaceMeshが扱わない上体角度については，MediaPipe Poseとの併用を想定する．
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=\columnwidth]{fig_head.png}
+\caption{頭部動作の抽出結果の可視化例．上段：Pitch（上下，青）とYaw（左右，橙）のタイムライン．左下：頭の向き分布（正面・上・下・左・右）の極座標表示．右下：動き量の時系列推移（淡：生値，濃：平滑化）．緑の縦点線は頷き・首振りの検出時点を示す．}
+\label{fig:head}
+\end{figure}
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=\columnwidth]{fig_gaze.png}
+\caption{視線解析の可視化例．左：注視点ヒートマップ（暖色ほど滞留時間が長い），右：視線軌跡（開始点 Start から終端までの遷移）．画面中央$\pm 10\,$degを話者・対象への注視と判定する．}
+\label{fig:gaze}
+\end{figure}
+
+\subsection{統合データ形式}
+
+3系統の抽出結果は，共通の時刻軸（セッション開始からの経過秒）に\,100\,msでリサンプルし，1セッションあたり1個のJSONファイルとして保存する．スキーマは大別して，(a) \verb|frames[]|：フレーム単位の生特徴（顔ランドマーク，頭部姿勢，視線角度，F0，RMSエネルギー），(b) \verb|utterances[]|：発話単位の集約（話者，開始終了時刻，ASRテキスト，ModernBERTによるカテゴリ別スコア），(c) \verb|indicators[]|：21指標ごとの集約系列（指標名，観点ラベル，値，平均，標準偏差）の3層からなる．フレーム生値と発話・指標集約値を併存させ，第\ref{sec:eval}章の評価実験と第\ref{sec:formulation}章の納得度推定モデルの双方からアクセスしやすい形とした．
+
+言語・韻律系の動作例を図\ref{fig:ui-timeseries}に示す．画面上部では14指標（言語・対話9指標・韻律5指標）の表示／非表示をチェックボックスで切り替え，リアルタイム値メーターを並列表示する．中段の時系列グラフ（図\ref{fig:ui-timeseries}）には，ModernBERTによる言語シグナル（0--1）とF0 / RMS / 発話速度 / ポーズ長などの韻律特徴量を同一時刻軸上に同期描画する．下段にはWhisperによる文字起こしに対し，ModernBERTゼロショット分類によるカテゴリ（同意表現・不同意・理解応答・hedge等）のタグとスコアを発話単位に表示する．
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=\columnwidth]{fig_ui_timeseries.png}
+\caption{本システムUIの時系列表示．ModernBERTによる言語・対話9指標のシグナル（0--1）と，F0 / RMS / 発話速度 / ポーズ長等の韻律特徴量を共通時刻軸で同期描画する．}
+\label{fig:ui-timeseries}
+\end{figure}
+
+\subsection{システムの利用フロー}
+
+本システムはWebブラウザ上から利用する設計とした．講師・学習者は事前のソフトウェアインストールを必要とせず，案内されたURLにアクセスするだけで参加できる．利用の流れは大別して以下の3段階からなる．
+
+\textbf{(1) 観察ルームへの入室}．講師・学習者・観察者の3者がそれぞれの役割でWeb上のバーチャル空間（観察ルーム）に入室する（図\ref{fig:room}）．各参加者のWebカメラ映像とマイク音声が観察ルームに集約され，観察者は3者の状況をWeb画面上で俯瞰しながらセッションを進行できる．
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=\columnwidth]{fig_room.png}
+\caption{講師（LECTURER）視点で見た観察ルームの内観．Web上のバーチャル空間内に教室が再現され，学習者アバターが正面に表示される．右上の録画コントロールにより当該セッションをサーバ側に記録できる．}
+\label{fig:room}
+\end{figure}
+
+\textbf{(2) セッション中のリアルタイム計測}．チュータリング開始後，本システムは学習者の顔映像と音声を取得し，\S4.2--\S4.4で述べたパイプラインに沿って各指標を時系列計算する．画面上には文字起こし，14指標（言語・対話9指標・韻律5指標）のリアルタイム値メーター，および時系列グラフが同期表示され（図\ref{fig:ui-timeseries}），講師・観察者はセッション中でも学習者の納得状況を確認できる．
+
+\textbf{(3) セッション後の分析結果閲覧}．セッション終了後は，同じWeb画面上で記録区間全体の感情カテゴリのタイムラインと講師・学習者の発話タイムラインを並列に表示し，表情変化と発話交代の対応をフレーム単位で確認できる．分析結果は\S4.5の統合JSON形式でエクスポート可能であり，後段の精度評価や納得度推定モデルへの入力としてそのまま利用できる．
+
+\section{システム評価実験}
+\label{sec:eval}
+
+\subsection{実験目的}
+
+本実験の目的は，第4章で実装した本システムが，1対1チュータリングセッションから\S\ref{sec:matching}で示した21指標を安定して取得できることを定量的に検証することにある．具体的には，(i) MediaPipe FaceMesh／librosa／Whisper + ModernBERTを組み合わせた本パイプラインが各指標に対して十分な計測精度を示すか，(ii) どの指標が安定的に取得可能で，どの指標がさらなる改善を要するかを明らかにする．これにより，第\ref{sec:formulation}章で示す納得度推定モデルに投入可能な信頼性の高い指標群を特定し，本システム全体の有効性を判断する材料を得る．
+
+評価は，本システムによる自動抽出結果と人手判定または独立な計測ツールによる値とを比較することにより行う．指標カテゴリの性質に応じ，評価指標を表\ref{tab:eval_method}のように区別する．
+
+\begin{table}[t]
+\centering
+\caption{指標カテゴリと評価指標}
+\label{tab:eval_method}
+\footnotesize
+\setlength{\tabcolsep}{3pt}
+\begin{tabular}{@{}p{0.45\columnwidth}p{0.48\columnwidth}@{}}
+\hline
+指標カテゴリ & 評価指標 \\
+\hline
+言語・対話（同意表現，質問等） & precision / recall / F1 \\
+音声（F0，RMSエネルギー，ポーズ長） & 独立ツールとの相関・MAE \\
+表情（合成スコア） & 人手アノテーションとの一致率 \\
+頭部動作（頷き，首振り） & 人手アノテーションとの一致率 \\
+視線 & 同上（ROI単位） \\
+姿勢（前傾） & 主観評定との順位相関 \\
+\hline
+\end{tabular}
+\end{table}
+
+\subsection{評価データ}
+
+評価データとして，1対1チュータリングセッションを記録した動画を1〜2本（各30秒〜数分）用いる．動画は，講師と学習者の顔映像を別カメラで，音声を講師・学習者で分離可能な形（ヘッドセットマイク等）で記録する．アノテーションは，言語・対話指標について発話単位で各カテゴリの出現／非出現を2名の評価者が独立に付与し，Cohenのκ係数による一致を確認したうえで合議で確定する．頷き・首振りはフレーム単位で発生時刻と継続時間を，視線は1秒間隔でROI（講師映像／教材／その他）への注視先を，姿勢は10秒区間ごとに前傾度を5段階で記録する．動画長は短いがアノテーションコストを考慮した実証的規模とする．本評価は本稿執筆時点では未実施であり，現時点で得られている予備データの状況は\S\ref{subsec:prelim}で述べる．
+
+\subsection{各指標の評価方法}
+
+\textbf{言語・対話指標}．言語7指標（同意表現，不同意・反論，理解・確認応答，聞き返し，hedge，スタンス変化，コミット表明）と対話2指標（質問・根拠要求，応答遅延）について，Whisperの書き起こしに対し人手で各カテゴリの正解ラベルを発話単位で付与し，ModernBERTゼロショット分類スコアと閾値判定の結果と照合してprecision / recall / F1を算出する．スタンス変化は区間ごとの極性遷移検出F1，応答遅延は人手境界との時間ずれ（MAE，ms）で別途評価する．
+
+\textbf{音声プロソディ指標}．F0およびRMSエネルギーはlibrosaの抽出値をPraat等の独立ツールの値と比較し，フレーム単位の相関係数とMAEを算出する．発話速度はWhisperのword-level timestampによる推定値と人手計測値との差で，ポーズ長は無音区間のIoUで評価する．確信度プロソディは動画区間ごとの自己評価（5段階）との順位相関で検証する．
+
+\textbf{視覚指標}．MediaPipe FaceMeshについては顔検出の失敗率と平均confidence値を集計し，記録条件の影響を確認する．笑顔・眉ひそめ・困惑の合成スコアおよび頷き・首振りは，2名の評価者によるアノテーションを基準とし，一致率とκ係数（表情），イベント単位F1と検出時刻ずれ（頭部動作）を算出する．視線はROI（講師映像／教材／その他）単位の一致率・κ係数で評価する．姿勢（前傾）は10秒区間ごとの主観評定（5段階）との順位相関（Spearmanのρ）で評価する．
+
+\subsection{予備観測の状況}
+\label{subsec:prelim}
+
+本格評価は未実施である一方，本システムの先行版として構築したMediaPipeベース簡易抽出器を用いて，19セッション中の有効9セッション（合計約8.6分，5{,}147フレーム）について頷きおよびAU相当の表情カテゴリ分布を確認した（表\ref{tab:prelim}）．頷き検出数は9セッション合計で123回，セッション間の頷き率は0〜35.3回/分の幅をもち（うち頷きが検出された7セッションに限れば5.3〜35.3回/分），confused相当カテゴリの比率は0〜82.2\%の範囲で変動した．これは，提案パイプラインがセッション差を捉え得る潜在的能力を持つことを示唆する．現在の本実装（MediaPipe FaceMesh / librosa / Whisper + ModernBERT）に対する正式な計測精度評価は，前項までに述べたアノテーション計画に従って今後実施する．
+
+\begin{table}[t]
+\centering
+\caption{予備観測（先行版簡易抽出器，有効9セッション）の概要}
+\label{tab:prelim}
+\small
+\begin{tabular}{lc}
+\hline
+項目 & 値 \\
+\hline
+有効セッション数 & 9 \\
+総録画時間 & 約 8.6 分 \\
+解析フレーム数 & 5{,}147 \\
+頷き検出総数 & 123 \\
+頷き率の幅（全9セッション，回/分） & 0.0 -- 35.3 \\
+頷き率の幅（頷き検出7セッション，回/分） & 5.3 -- 35.3 \\
+頷き率（検出7セッション，平均$\pm$SD） & $19.2 \pm 9.8$ \\
+confused比率の幅 & 0.0 -- 82.2\% \\
+\hline
+\end{tabular}
+\end{table}
+
+予備観測の可視化例を図\ref{fig:timeline-screen}に示す．本セッション（\texttt{2026-02-14T04-34-48}，約187.8秒，1{,}879フレーム）では，感情カテゴリのタイムライン（上段：無表情・喜び・困惑・驚き・悲しみ・怒り）と発話タイムライン（下段：講師・学習者）が並列に表示され，感情の遷移と発話交代の対応関係をフレーム単位で確認できる．本実装で記録された9セッションは，このような時系列可視化と表\ref{tab:prelim}の集約指標の両方からアクセス可能であり，今後の正式評価における入力データとしてそのまま利用できる．
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=\columnwidth]{fig3_timeline.png}
+\caption{予備観測の可視化例（\texttt{2026-02-14T04-34-48}，187.8秒，1{,}879フレーム）．上段：感情カテゴリのタイムライン，下段：講師（青）・学習者（緑）の発話タイムライン．}
+\label{fig:timeline-screen}
+\end{figure}
+
+応答遅延（対話指標）の予備分析例を図\ref{fig:response}に示す．本セッションでは応答ペア27件が検出され，平均潜時0.98秒，本格応答9件，相づち18件，無応答0件となった．左下のヒストグラムでは即答（$<$0.5\,s）・即答（0.5--1.5\,s）が大半を占め，熟考（1.5--4\,s）が5件と少数存在する．本実装が応答遅延を発話単位で安定的に切り出せていることを示すとともに，相づちと本格応答を別カテゴリとして分離できるため，「形式的な同意」と「理解の伴う応答」の弁別に利用可能であることを示唆する．
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=\columnwidth]{fig_response.png}
+\caption{応答遅延の予備分析例（講師発話終了 $\rightarrow$ 学習者応答）．上段：応答ペア数・平均潜時・本格応答・相づち・無応答の集計，左下：応答潜時の分布ヒストグラム（即答／熟考／遅延／無応答），右下：応答ペアごとの潜時と継続時間．}
+\label{fig:response}
+\end{figure}
+
+\section{考察}
+\label{sec:formulation}
+
+\subsection{各計測指標の精度}
+
+\S\ref{subsec:prelim}に示した予備観測の結果から，本システムが取得する各指標の安定性と限界について以下のように考察する．頷きは有効9セッション中7セッションで安定的に検出され，5.3〜35.3回/分のセッション差を捉えることができた．残る2セッションで頷きが検出されなかった点については，撮影条件（照明・カメラ角度）や学習者の個人差の影響を切り分ける必要がある．confused相当の表情カテゴリも0〜82.2\%と大きな分散を示しており，表情指標がセッション間の差異を反映する能力を有することが示唆される．
+
+ただし，本格的な精度評価（precision／recall／F1，独立ツールとの相関係数等）は未実施であり，言語指標（ModernBERTゼロショット分類）および音声指標（librosaによる音響特徴量）の妥当性検証は，\S\ref{sec:eval}で示した評価計画に基づき今後実施する課題として残る．現時点での予備観測は，本システムが定量的に有意な変動を捉え得るとの示唆を与えるに留まり，全21指標を運用するうえで安定して取得可能な指標群と要改善指標群を切り分けるには，本格評価の完了を待つ必要がある．
+
+\subsection{納得度推定モデルの設定}
+
+本研究では，観測指標から納得度を推定する\textbf{枠組み}を提示する．本枠組みは検証前の理論モデルであり，重みの最適化と精度評価は次段階の実証実験で行う．
+
+\textbf{式1（観点別納得度）}：
+\begin{equation}
+\hat{C}^{(k)}_{t} = \sigma\!\left(\sum_{i=1}^{N} s_i \cdot w_i^{(k)} \cdot f_i(x_{i,t}) + b_k\right)
+\label{eq:perspective}
+\end{equation}
+
+ここで，
+\begin{itemize}
+\setlength{\itemsep}{0pt}
+\item $k \in \{\mbox{理解}, \mbox{同意}, \mbox{受容}, \mbox{コミット}\}$：納得観点
+\item $i$：観測指標のインデックス
+\item $s_i \in \{+1, -1\}$：指標の方向性（\S\ref{sec:matching}の表\ref{tab:matching}で固定）
+\item $f_i$：指標の正規化関数（\S4の実装で定義）
+\item $w_i^{(k)}$：観点 $k$ における指標 $i$ の重み
+\item $\sigma$：シグモイド関数（$[0,1]$ への変換）
+\end{itemize}
+
+\textbf{式2（統合納得度）}：
+\begin{equation}
+\hat{C}^{\mathrm{total}}_{t} = \sum_{k} \gamma_k \cdot \hat{C}^{(k)}_{t}, \quad \sum_{k} \gamma_k = 1
+\label{eq:total}
+\end{equation}
+
+重み $w_i^{(k)}$ の初期値は，\S\ref{sec:matching}の照合表（表\ref{tab:matching}）の★を数値化して設定する（表\ref{tab:weights}）．★★★ $=0.30$，★★ $=0.20$，★ $=0.10$，--- $=0.00$ の対応で変換し，逆方向（``$-$★''）はそのまま負号を付した．紙幅の都合により，本表では4観点それぞれに代表的な手がかりとなる10指標を抜粋して示す．残余の指標についても同様の変換規則で重みを定義可能であり，今後の実証実験ではこれらを含めた全21指標を対象とする．
+
+\begin{table}[t]
+\centering
+\caption{重み $w_i^{(k)}$ の初期値}
+\label{tab:weights}
+\small
+\begin{tabular}{lrrrr}
+\hline
+観測指標 & 理解 & 同意 & 受容 & コミット \\
+\hline
+同意表現         &  0.20 &  0.30 &  0.20 &  0.10 \\
+スタンス変化     &  0.10 &  0.20 &  0.30 &  0.20 \\
+コミットメント言語 &  0.10 &  0.20 &  0.20 &  0.30 \\
+hedge            & $-$0.20 & $-$0.20 & $-$0.10 & $-$0.10 \\
+F0確信度         &  0.20 &  0.20 &  0.10 &  0.10 \\
+ポーズ長         & $-$0.20 & $-$0.10 & $-$0.10 &  0.00 \\
+笑顔             &  0.10 &  0.20 &  0.10 &  0.10 \\
+困惑表情         & $-$0.30 & $-$0.10 &  0.00 &  0.00 \\
+うなずき         &  0.30 &  0.30 &  0.10 &  0.00 \\
+注視             &  0.20 &  0.10 &  0.00 &  0.00 \\
+\hline
+\end{tabular}
+\end{table}
+
+本構成は，Ajzen\cite{Ajzen1991}の計画的行動理論における態度と行動意図の段階分離，およびマルチモーダル特徴融合による社会的シグナル推定の枠組み\cite{MehuMaaten2014}に立脚する．
+
+\subsection{試験的適用（1事例）}
+
+枠組みの実行可能性を確認するため，本システムで取得した1ペアのチュータリングデータに対し，表\ref{tab:weights}の初期値重みを用いて学習なしで適用した結果を図\ref{fig:conviction}に示す．納得度は概ね0.3--0.5で推移し，hedge検出時点で局所的な落ち込みが確認された．本事例は動作確認を目的とし，値の妥当性は今後の実証実験で評価する．
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=\columnwidth]{fig_conviction.png}
+\caption{試験的適用で得られた統合納得度 $\hat{C}^{\mathrm{total}}_t$ の時系列例（1ペア，約330秒）．画面上端の凡例は「理解+同意+注意+確信 $-$ 混乱+不同意+不確実」の重み付き和に対応する．縦の点線（橙）はhedge（不確実性表現）が検出された時点を示す．}
+\label{fig:conviction}
+\end{figure}
+
+\section{おわりに}
+
+本研究では，1対1チュータリングにおける学習者の納得度を非言語行動・音声プロソディ・発話内容から自動推定する枠組みを提示した．まず，納得度に関連する21の観測指標を文献調査により体系化し，これらを「理解・同意・受容・コミット」の4観点に対応づけて関連度マトリクスを構築した．次に，視覚・音声・言語の3系統からなる自動計測パイプラインとして本システムを実装し，各指標の精度評価方法を設計するとともに予備観測を実施した．さらに，観点別納得度をシグモイド関数による線形重み付き和として表現し，それを観点重み付き和として統合する二段階の定式化を提案した．今後は，5ペアの1対1チュータリングを用いた実証実験により，提案枠組みの妥当性を検証する．
+
+\begin{thebibliography}{99}
+\bibitem{Yamaji2012}
+山地弘起，橋本健夫（編著）：学生の納得感を高める大学授業，ナカニシヤ出版 (2012).
+\bibitem{Picard1997}
+Picard, R.~W.: Affective Computing, MIT Press (1997).
+\bibitem{DMello2014}
+D'Mello, S., Lehman, B., Pekrun, R. and Graesser, A.: Confusion can be beneficial for learning, Learning and Instruction, Vol.~29, pp.~153--170 (2014).
+\bibitem{Craig2008}
+Craig, S.~D., D'Mello, S., Witherspoon, A. and Graesser, A.: Emote aloud during learning with AutoTutor: Applying the Facial Action Coding System to cognitive-affective states during learning, Cognition \& Emotion, Vol.~22, No.~5, pp.~777--788 (2008).
+\bibitem{Ekman1978}
+Ekman, P. and Friesen, W.~V.: Facial Action Coding System: A Technique for the Measurement of Facial Movement, Consulting Psychologists Press (1978).
+\bibitem{Allwood1992}
+Allwood, J., Nivre, J. and Ahls\'{e}n, E.: On the semantics and pragmatics of linguistic feedback, Journal of Semantics, Vol.~9, No.~1, pp.~1--26 (1992).
+\bibitem{Kendon1967}
+Kendon, A.: Some functions of gaze-direction in social interaction, Acta Psychologica, Vol.~26, pp.~22--63 (1967).
+\bibitem{PonBarry2008}
+Pon-Barry, H.: Prosodic manifestations of confidence and uncertainty in spoken language, Proc. of Interspeech 2008, pp.~74--77 (2008).
+\bibitem{Litman2006}
+Litman, D.~J. and Forbes-Riley, K.: Recognizing student emotions and attitudes on the basis of utterances in spoken tutoring dialogues, Speech Communication, Vol.~48, No.~5, pp.~559--590 (2006).
+\bibitem{Eyben2016}
+Eyben, F., Scherer, K.~R., Schuller, B.~W., et al.: The Geneva Minimalistic Acoustic Parameter Set (GeMAPS) for voice research and affective computing, IEEE Trans. on Affective Computing, Vol.~7, No.~2, pp.~190--202 (2016).
+\bibitem{Kartynnik2019}
+Kartynnik, Y., Ablavatski, A., Grishchenko, I. and Grundmann, M.: Real-time facial surface geometry from monocular video on mobile GPUs, arXiv preprint arXiv:1907.06724 (2019).
+\bibitem{Galley2004}
+Galley, M., McKeown, K., Hirschberg, J. and Shriberg, E.: Identifying agreement and disagreement in conversational speech: Use of Bayesian networks to model pragmatic dependencies, Proc. of ACL 2004, pp.~669--676 (2004).
+\bibitem{Abbott2011}
+Abbott, R., Walker, M., Anand, P., Tree, J.~E.~F., Bowmani, R. and King, J.: How can you say such things?!?: Recognizing disagreement in informal political argument, Proc. of ACL Workshop on Languages in Social Media, pp.~2--11 (2011).
+\bibitem{Clark1991}
+Clark, H.~H. and Brennan, S.~E.: Grounding in communication, in Resnick, L.~B., Levine, J.~M. and Teasley, S.~D. (Eds.), Perspectives on Socially Shared Cognition, pp.~127--149, American Psychological Association (1991).
+\bibitem{Schegloff1977}
+Schegloff, E.~A., Jefferson, G. and Sacks, H.: The preference for self-correction in the organization of repair in conversation, Language, Vol.~53, No.~2, pp.~361--382 (1977).
+\bibitem{Rubin2006}
+Rubin, V.~L., Liddy, E.~D. and Kando, N.: Certainty identification in texts: Categorization model and manual tagging results, in Shanahan, J., Qu, Y. and Wiebe, J. (Eds.), Computing Attitude and Affect in Text: Theory and Applications, pp.~61--76, Springer (2006).
+\bibitem{Walker2012}
+Walker, M., Tree, J.~E.~F., Anand, P., Abbott, R. and King, J.: A corpus for research on deliberation and debate, Proc. of LREC 2012, pp.~812--817 (2012).
+\bibitem{Tan2016}
+Tan, C., Niculae, V., Danescu-Niculescu-Mizil, C. and Lee, L.: Winning arguments: Interaction dynamics and persuasion strategies in good-faith online discussions, Proc. of WWW 2016, pp.~613--624 (2016).
+\bibitem{Ajzen1991}
+Ajzen, I.: The theory of planned behavior, Organizational Behavior and Human Decision Processes, Vol.~50, No.~2, pp.~179--211 (1991).
+\bibitem{OKeefe2002}
+O'Keefe, D.~J.: Persuasion: Theory and Research (2nd ed.), Sage Publications (2002).
+\bibitem{Traum1994b}
+Traum, D.~R. and Allen, J.~F.: Discourse obligations in dialogue processing, Proc. of ACL 1994, pp.~1--8 (1994).
+\bibitem{Graesser1994}
+Graesser, A.~C. and Person, N.~K.: Question asking during tutoring, American Educational Research Journal, Vol.~31, No.~1, pp.~104--137 (1994).
+\bibitem{Heldner2010}
+Heldner, M. and Edlund, J.: Pauses, gaps and overlaps in conversations, Journal of Phonetics, Vol.~38, No.~4, pp.~555--568 (2010).
+\bibitem{GoldmanEisler1968}
+Goldman-Eisler, F.: Psycholinguistics: Experiments in Spontaneous Speech, Academic Press (1968).
+\bibitem{Morency2007}
+Morency, L.-P., Sidner, C., Lee, C. and Darrell, T.: Head gestures for perceptual interfaces: The role of context in improving recognition, Artificial Intelligence, Vol.~171, No.~8--9, pp.~568--585 (2007).
+\bibitem{Kendon2002}
+Kendon, A.: Some uses of the head shake, Gesture, Vol.~2, No.~2, pp.~147--182 (2002).
+\bibitem{Mehrabian1971}
+Mehrabian, A.: Silent Messages, Wadsworth Publishing (1971).
+\bibitem{Radford2023}
+Radford, A., Kim, J.~W., Xu, T., Brockman, G., McLeavey, C. and Sutskever, I.: Robust speech recognition via large-scale weak supervision, Proc. of ICML 2023, pp.~28492--28518 (2023).
+\bibitem{MehuMaaten2014}
+Mehu, M. and van der Maaten, L.: Multimodal integration of dynamic audio-visual cues in the communication of agreement and disagreement, Journal of Nonverbal Behavior, Vol.~38, No.~4, pp.~569--597 (2014).
+\end{thebibliography}
+
+\end{document}

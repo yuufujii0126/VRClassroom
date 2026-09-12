@@ -1,0 +1,607 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <title>うなずき誤検出デバッグ</title>
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/face_mesh.js" crossorigin="anonymous"></script>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: 'Segoe UI', 'Hiragino Sans', sans-serif;
+      background: #1a1a2e; color: #eee;
+      display: flex; flex-direction: column; align-items: center;
+      min-height: 100vh; padding: 16px;
+    }
+    h1 { font-size: 20px; margin-bottom: 12px; color: #ccc; }
+
+    .main-row {
+      display: flex; gap: 16px; align-items: flex-start;
+      flex-wrap: wrap; justify-content: center;
+    }
+
+    /* Camera */
+    .camera-box {
+      position: relative; border-radius: 12px; overflow: hidden;
+      border: 3px solid #333; transition: border-color 0.15s;
+    }
+    .camera-box.nod-flash { border-color: #ff5252; }
+    video { display: block; width: 480px; height: 360px; transform: scaleX(-1); background: #000; }
+
+    /* Nod flash overlay */
+    .nod-overlay {
+      position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+      background: rgba(255, 82, 82, 0.3); pointer-events: none;
+      opacity: 0; transition: opacity 0.1s;
+    }
+    .nod-overlay.active { opacity: 1; }
+
+    /* Status bar on camera */
+    .cam-status {
+      position: absolute; bottom: 0; left: 0; width: 100%;
+      background: rgba(0,0,0,0.7); padding: 6px 12px;
+      font-size: 12px; display: flex; justify-content: space-between;
+    }
+
+    /* Right panel */
+    .panel {
+      background: rgba(255,255,255,0.06); border-radius: 12px; padding: 20px;
+      min-width: 300px;
+    }
+
+    /* Stats */
+    .stat-grid {
+      display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 16px;
+    }
+    .stat-box {
+      background: rgba(255,255,255,0.05); border-radius: 8px; padding: 12px;
+      text-align: center;
+    }
+    .stat-box .value { font-size: 36px; font-weight: bold; }
+    .stat-box .label { font-size: 11px; color: #999; margin-top: 2px; }
+    .stat-box.detections .value { color: #42a5f5; }
+    .stat-box.fps .value { color: #ff5252; }
+    .stat-box.precision .value { color: #66bb6a; }
+    .stat-box.elapsed .value { font-size: 24px; color: #ab47bc; }
+
+    /* FP Button */
+    #fp-btn {
+      width: 100%; padding: 20px; font-size: 20px; font-weight: bold;
+      background: #c62828; color: #fff; border: none; border-radius: 10px;
+      cursor: pointer; margin-bottom: 12px; transition: all 0.15s;
+      position: relative; overflow: hidden;
+    }
+    #fp-btn:hover { background: #e53935; }
+    #fp-btn:active { transform: scale(0.97); }
+    #fp-btn:disabled { background: #555; cursor: not-allowed; }
+    #fp-btn .hint { font-size: 11px; font-weight: normal; opacity: 0.7; display: block; margin-top: 4px; }
+
+    /* Controls */
+    .controls { display: flex; gap: 8px; margin-bottom: 12px; }
+    .controls button {
+      flex: 1; padding: 10px; font-size: 14px; border: none; border-radius: 8px;
+      cursor: pointer; font-weight: bold;
+    }
+    #start-btn { background: #2e7d32; color: #fff; }
+    #start-btn:hover { background: #388e3c; }
+    #stop-btn { background: #555; color: #fff; }
+    #stop-btn:hover { background: #666; }
+    #download-btn { background: #1565c0; color: #fff; }
+    #download-btn:hover { background: #1976d2; }
+
+    /* Event log */
+    .event-log {
+      max-height: 200px; overflow-y: auto; font-size: 12px;
+      background: rgba(0,0,0,0.3); border-radius: 8px; padding: 8px;
+      font-family: monospace;
+    }
+    .event-log .entry { padding: 2px 0; border-bottom: 1px solid rgba(255,255,255,0.05); }
+    .entry.nod { color: #42a5f5; }
+    .entry.fp { color: #ff5252; font-weight: bold; }
+    .entry.info { color: #999; }
+
+    /* Sensor bar chart */
+    .sensor-bars {
+      display: flex; align-items: flex-end; height: 60px; gap: 1px;
+      background: rgba(0,0,0,0.2); border-radius: 6px; padding: 4px;
+      margin-bottom: 12px; overflow: hidden;
+    }
+    .sensor-bar {
+      width: 3px; min-height: 1px; background: #42a5f5; border-radius: 1px;
+      transition: height 0.05s;
+    }
+    .sensor-bar.nod-active { background: #ff5252; }
+  </style>
+</head>
+<body>
+  <h1>うなずき誤検出デバッグツール</h1>
+
+  <div class="main-row">
+    <!-- Camera -->
+    <div class="camera-box" id="camera-box">
+      <video id="video" playsinline></video>
+      <div class="nod-overlay" id="nod-overlay"></div>
+      <div class="cam-status">
+        <span id="face-status">顔未検出</span>
+        <span id="fps-display">-- fps</span>
+      </div>
+    </div>
+
+    <!-- Panel -->
+    <div class="panel">
+      <div class="stat-grid">
+        <div class="stat-box detections">
+          <div class="value" id="det-count">0</div>
+          <div class="label">検出回数</div>
+        </div>
+        <div class="stat-box fps">
+          <div class="value" id="fp-count">0</div>
+          <div class="label">誤検出(FP)</div>
+        </div>
+        <div class="stat-box precision">
+          <div class="value" id="precision">--%</div>
+          <div class="label">推定精度</div>
+        </div>
+        <div class="stat-box elapsed">
+          <div class="value" id="elapsed">00:00</div>
+          <div class="label">経過時間</div>
+        </div>
+      </div>
+
+      <!-- Sensor visualization -->
+      <div class="sensor-bars" id="sensor-bars"></div>
+
+      <!-- FP button -->
+      <button id="fp-btn" disabled>
+        誤検出をマーク
+        <span class="hint">検出時に光ったら5秒以内に押す（Spaceキーでも可）</span>
+      </button>
+
+      <!-- Controls -->
+      <div class="controls">
+        <button id="start-btn">開始</button>
+        <button id="stop-btn" disabled>停止</button>
+        <button id="download-btn" disabled>保存</button>
+      </div>
+
+      <!-- Event log -->
+      <div class="event-log" id="event-log">
+        <div class="entry info">「開始」を押してセッションを始めてください</div>
+      </div>
+    </div>
+  </div>
+
+<script>
+  // ========== State ==========
+  let sessionActive = false;
+  let sessionStartTime = 0;
+  let elapsedTimer = null;
+
+  let nodDetections = [];   // timestamps of all nod detections
+  let fpMarkers = [];       // timestamps of FP button presses
+  let sensorLog = [];       // continuous sensor data
+  const SENSOR_LOG_MAX = 30 * 60 * 30; // ~30min at 30fps
+
+  // Sensor bar visualization
+  const BAR_COUNT = 100;
+  let sensorBarData = [];
+
+  // ========== Nod Detection (copied from observation-room.html) ==========
+  let headPoseHistory = [];
+  const POSE_HISTORY_MAX = 60;
+  let smoothedNoseY = null, smoothedNoseX = null;
+  let baselineNoseY = null, baselineNoseX = null;
+  let nodPhase = 'IDLE';
+  let nodPeakDelta = 0, nodPeakUpdated = false;
+  let nodStartTime = null;
+  const NOD_SMOOTH_ALPHA = 0.55;
+  const BASELINE_ALPHA = 0.10;
+  const NOD_MIN_DELTA_Y = 0.010;
+  const NOD_RETURN_RATIO = 0.35;
+  const NOD_RETURN_RATIO_STRICT = 0.55;
+  const NOD_PEAK_AMP_FACTOR = 2.0;
+  const NOD_MAX_DURATION = 600;
+  const NOD_MIN_DURATION = 60;
+  const NOD_COOLDOWN = 500;
+  const NOD_MAX_YAW_RANGE = 0.06;
+  const NOD_VH_RATIO = 1.5;
+  const NOD_TAIL_MS = 600;  // mask wobble metrics for this long after a confirmed nod (head returns to neutral)
+  let lastNodTime = 0;
+  let nodCount = 0;
+  let nodActiveUntil = 0;   // timestamp until which nodActive flag stays true
+
+  function detectNod(landmarks, timestamp) {
+    const noseTip = landmarks[1];
+    const forehead = landmarks[10], chin = landmarks[152];
+    const leftEye = landmarks[33], rightEye = landmarks[263];
+    const faceH = Math.hypot(chin.x - forehead.x, chin.y - forehead.y);
+    if (faceH < 0.03) return null;
+
+    const eyeMidX = (leftEye.x + rightEye.x) / 2;
+    const eyeW = Math.abs(rightEye.x - leftEye.x);
+    const yaw = eyeW > 0.001 ? (noseTip.x - eyeMidX) / eyeW : 0;
+
+    const rawY = noseTip.y, rawX = noseTip.x;
+    let sY = rawY, sX = rawX;
+    if (smoothedNoseY !== null) {
+      sY = NOD_SMOOTH_ALPHA * rawY + (1 - NOD_SMOOTH_ALPHA) * smoothedNoseY;
+      sX = NOD_SMOOTH_ALPHA * rawX + (1 - NOD_SMOOTH_ALPHA) * smoothedNoseX;
+    }
+    smoothedNoseY = sY; smoothedNoseX = sX;
+
+    if (baselineNoseY === null) {
+      baselineNoseY = sY; baselineNoseX = sX;
+    } else if (nodPhase === 'IDLE') {
+      baselineNoseY = BASELINE_ALPHA * sY + (1 - BASELINE_ALPHA) * baselineNoseY;
+      baselineNoseX = BASELINE_ALPHA * sX + (1 - BASELINE_ALPHA) * baselineNoseX;
+    }
+
+    headPoseHistory.push({ y: sY, x: sX, yaw, time: timestamp });
+    while (headPoseHistory.length > POSE_HISTORY_MAX) headPoseHistory.shift();
+    if (headPoseHistory.length < 5) return null;
+
+    const deltaY = sY - baselineNoseY;
+    const deltaX = sX - baselineNoseX;
+    const threshold = Math.max(NOD_MIN_DELTA_Y, faceH * 0.035);
+
+    // Sensor log entry
+    const entry = {
+      t: timestamp, sY, sX, deltaY, deltaX, yaw, faceH,
+      baseY: baselineNoseY, threshold, phase: nodPhase
+    };
+
+    if (timestamp - lastNodTime < NOD_COOLDOWN) return entry;
+
+    let detected = false;
+
+    switch (nodPhase) {
+      case 'IDLE':
+        if (Math.abs(deltaY) > threshold && Math.abs(deltaY) > Math.abs(deltaX) * NOD_VH_RATIO) {
+          nodPhase = 'MOVING'; nodPeakDelta = deltaY; nodPeakUpdated = false; nodStartTime = timestamp;
+        }
+        break;
+      case 'MOVING':
+        if (timestamp - nodStartTime > NOD_MAX_DURATION) {
+          // Timeout without confirmation: reset baseline to absorb drift
+          nodPhase = 'IDLE'; baselineNoseY = sY; baselineNoseX = sX; break;
+        }
+        const recent = headPoseHistory.filter(h => h.time >= nodStartTime);
+        if (recent.length > 3) {
+          const yaws = recent.map(h => h.yaw);
+          if (Math.max(...yaws) - Math.min(...yaws) > NOD_MAX_YAW_RANGE) { nodPhase = 'IDLE'; break; }
+          const xs = recent.map(h => h.x), ys = recent.map(h => h.y);
+          if (Math.max(...ys) - Math.min(...ys) < (Math.max(...xs) - Math.min(...xs)) * NOD_VH_RATIO) { nodPhase = 'IDLE'; break; }
+        }
+        if (Math.abs(deltaY) > Math.abs(nodPeakDelta)) { nodPeakDelta = deltaY; nodPeakUpdated = true; }
+        if (timestamp - nodStartTime < NOD_MIN_DURATION) break;
+        const peakAbs = Math.abs(nodPeakDelta);
+        const returnAmount = peakAbs - Math.abs(deltaY);
+        const returnRatio = peakAbs > 0 ? returnAmount / peakAbs : 0;
+        let nodConfirmed = false;
+        if (nodPeakUpdated) {
+          nodConfirmed = peakAbs > threshold && returnRatio > NOD_RETURN_RATIO;
+        } else {
+          nodConfirmed = peakAbs > threshold * NOD_PEAK_AMP_FACTOR && returnRatio > NOD_RETURN_RATIO_STRICT;
+        }
+        if (nodConfirmed) {
+          nodPhase = 'IDLE'; nodCount++; lastNodTime = timestamp;
+          nodActiveUntil = timestamp + NOD_TAIL_MS;  // keep masking during return-to-neutral
+          baselineNoseY = sY; baselineNoseX = sX;
+          headPoseHistory = headPoseHistory.filter(h => h.time > timestamp - 200);
+          detected = true;
+        }
+        break;
+    }
+
+    entry.phase = nodPhase;
+    entry.nodActive = (nodPhase !== 'IDLE') || (timestamp < nodActiveUntil);
+    if (detected) entry.detected = true;
+    return entry;
+  }
+
+  // ========== UI ==========
+  const cameraBox = document.getElementById('camera-box');
+  const nodOverlay = document.getElementById('nod-overlay');
+  const detCountEl = document.getElementById('det-count');
+  const fpCountEl = document.getElementById('fp-count');
+  const precisionEl = document.getElementById('precision');
+  const elapsedEl = document.getElementById('elapsed');
+  const faceStatusEl = document.getElementById('face-status');
+  const fpsDisplayEl = document.getElementById('fps-display');
+  const fpBtn = document.getElementById('fp-btn');
+  const startBtn = document.getElementById('start-btn');
+  const stopBtn = document.getElementById('stop-btn');
+  const downloadBtn = document.getElementById('download-btn');
+  const eventLog = document.getElementById('event-log');
+
+  // Init sensor bars
+  const sensorBarsEl = document.getElementById('sensor-bars');
+  for (let i = 0; i < BAR_COUNT; i++) {
+    const bar = document.createElement('div');
+    bar.className = 'sensor-bar';
+    sensorBarsEl.appendChild(bar);
+  }
+  const sensorBarEls = sensorBarsEl.querySelectorAll('.sensor-bar');
+
+  function addLog(text, cls = 'info') {
+    const div = document.createElement('div');
+    div.className = `entry ${cls}`;
+    const t = sessionActive ? ((Date.now() - sessionStartTime) / 1000).toFixed(1) + 's' : '--';
+    div.textContent = `[${t}] ${text}`;
+    eventLog.prepend(div);
+    // Keep last 100
+    while (eventLog.children.length > 100) eventLog.removeChild(eventLog.lastChild);
+  }
+
+  function updateStats() {
+    detCountEl.textContent = nodDetections.length;
+    fpCountEl.textContent = fpMarkers.length;
+    if (nodDetections.length > 0) {
+      const tp = nodDetections.length - fpMarkers.length;
+      const prec = Math.max(0, (tp / nodDetections.length) * 100);
+      precisionEl.textContent = prec.toFixed(0) + '%';
+    } else {
+      precisionEl.textContent = '--%';
+    }
+  }
+
+  function updateElapsed() {
+    if (!sessionActive) return;
+    const sec = Math.floor((Date.now() - sessionStartTime) / 1000);
+    const m = Math.floor(sec / 60).toString().padStart(2, '0');
+    const s = (sec % 60).toString().padStart(2, '0');
+    elapsedEl.textContent = `${m}:${s}`;
+  }
+
+  function updateSensorBar(deltaY, threshold, isNod) {
+    // Push normalized value
+    const normalized = Math.min(1, Math.abs(deltaY) / (threshold * 3));
+    sensorBarData.push({ v: normalized, nod: isNod });
+    if (sensorBarData.length > BAR_COUNT) sensorBarData.shift();
+
+    for (let i = 0; i < BAR_COUNT; i++) {
+      const d = sensorBarData[i];
+      if (d) {
+        sensorBarEls[i].style.height = Math.max(1, d.v * 52) + 'px';
+        sensorBarEls[i].className = 'sensor-bar' + (d.nod ? ' nod-active' : '');
+      } else {
+        sensorBarEls[i].style.height = '1px';
+      }
+    }
+  }
+
+  // Nod flash
+  let flashTimeout = null;
+  function flashNod() {
+    cameraBox.classList.add('nod-flash');
+    nodOverlay.classList.add('active');
+    clearTimeout(flashTimeout);
+    flashTimeout = setTimeout(() => {
+      cameraBox.classList.remove('nod-flash');
+      nodOverlay.classList.remove('active');
+    }, 500);
+  }
+
+  // FP Button
+  // Track which detection each FP corresponds to (allow marking within 5s window)
+  const FP_WINDOW = 5000;
+
+  fpBtn.addEventListener('click', () => {
+    if (!sessionActive) return;
+    const now = Date.now();
+
+    // Find the most recent unmatched detection within window
+    const recentDet = [...nodDetections].reverse().find(d => {
+      return (now - d) < FP_WINDOW && !fpMarkers.some(fp => Math.abs(fp.detection - d) < 100);
+    });
+
+    if (!recentDet) {
+      addLog('マーク失敗：直近3秒以内に検出なし', 'info');
+      return;
+    }
+
+    fpMarkers.push({ t: now, detection: recentDet });
+    addLog(`FP マーク #${fpMarkers.length} (検出から ${((now - recentDet)/1000).toFixed(1)}s後)`, 'fp');
+    updateStats();
+  });
+
+  // Keyboard shortcut
+  document.addEventListener('keydown', (e) => {
+    if (e.code === 'Space' && sessionActive) {
+      e.preventDefault();
+      fpBtn.click();
+    }
+  });
+
+  // Start / Stop
+  startBtn.addEventListener('click', () => {
+    sessionActive = true;
+    sessionStartTime = Date.now();
+    nodDetections = [];
+    fpMarkers = [];
+    sensorLog = [];
+    sensorBarData = [];
+    nodCount = 0;
+    // Reset nod detection state
+    smoothedNoseY = null; smoothedNoseX = null;
+    baselineNoseY = null; baselineNoseX = null;
+    nodPhase = 'IDLE'; lastNodTime = 0; nodActiveUntil = 0;
+    headPoseHistory = [];
+
+    fpBtn.disabled = false;
+    startBtn.disabled = true;
+    stopBtn.disabled = false;
+    downloadBtn.disabled = true;
+    eventLog.innerHTML = '';
+    addLog('セッション開始 - 普通に過ごしてください', 'info');
+    addLog('誤検出が起きたらSpaceキーまたはボタンを押す', 'info');
+    updateStats();
+    elapsedTimer = setInterval(updateElapsed, 1000);
+  });
+
+  stopBtn.addEventListener('click', () => {
+    sessionActive = false;
+    fpBtn.disabled = true;
+    startBtn.disabled = false;
+    stopBtn.disabled = true;
+    downloadBtn.disabled = false;
+    clearInterval(elapsedTimer);
+    addLog(`セッション終了: 検出${nodDetections.length}回, FP${fpMarkers.length}回`, 'info');
+
+    // Analysis summary
+    if (nodDetections.length > 0) {
+      analyzeFPPatterns();
+    }
+  });
+
+  downloadBtn.addEventListener('click', () => {
+    const data = {
+      sessionStart: new Date(sessionStartTime).toISOString(),
+      duration: Date.now() - sessionStartTime,
+      nodDetections,
+      fpMarkers,
+      analysis: {
+        totalDetections: nodDetections.length,
+        fpCount: fpMarkers.length,
+        tpCount: nodDetections.length - fpMarkers.length,
+        precision: nodDetections.length > 0
+          ? ((nodDetections.length - fpMarkers.length) / nodDetections.length * 100).toFixed(1)
+          : 'N/A'
+      },
+      fpSensorSnapshots: extractFPSnapshots(),
+      sensorLog
+    };
+    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    const ts = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
+    a.href = url;
+    a.download = `nod_fp_debug_${ts}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+    addLog('データ保存完了', 'info');
+  });
+
+  // Extract sensor data around each FP event
+  function extractFPSnapshots() {
+    return fpMarkers.map((fp, i) => {
+      const detTime = fp.detection;
+      // Get 500ms before and 200ms after
+      const windowStart = detTime - 500;
+      const windowEnd = detTime + 200;
+      const window = sensorLog.filter(s => s.t >= windowStart && s.t <= windowEnd);
+      return {
+        fpIndex: i,
+        detectionTime: detTime,
+        markerTime: fp.t,
+        reactionTime: fp.t - detTime,
+        sensorWindow: window
+      };
+    });
+  }
+
+  // Analyze FP patterns
+  function analyzeFPPatterns() {
+    const snapshots = extractFPSnapshots();
+    if (snapshots.length === 0) {
+      addLog('誤検出なし - 素晴らしい！', 'info');
+      return;
+    }
+
+    addLog('--- 誤検出パターン分析 ---', 'info');
+
+    // Analyze each FP
+    snapshots.forEach((snap, i) => {
+      const window = snap.sensorWindow;
+      if (window.length === 0) return;
+
+      const atDetection = window.find(s => s.detected) || window[Math.floor(window.length / 2)];
+      if (!atDetection) return;
+
+      const yawRange = Math.max(...window.map(s => s.yaw)) - Math.min(...window.map(s => s.yaw));
+      const deltaYMax = Math.max(...window.map(s => Math.abs(s.deltaY)));
+      const deltaXMax = Math.max(...window.map(s => Math.abs(s.deltaX)));
+      let cause = '';
+      if (yawRange > 0.04) cause = '頭の横回転あり';
+      else if (deltaXMax > deltaYMax * 0.5) cause = '横方向の動きが大きい';
+      else if (deltaYMax < atDetection.threshold * 1.5) cause = '閾値ギリギリ';
+      else cause = '小さな縦動き';
+
+      addLog(`FP#${i+1}: deltaY=${atDetection.deltaY.toFixed(4)} yaw=${yawRange.toFixed(4)} → ${cause}`, 'fp');
+    });
+
+    // Summary
+    const avgReaction = snapshots.reduce((s, x) => s + x.reactionTime, 0) / snapshots.length;
+    addLog(`平均反応時間: ${(avgReaction/1000).toFixed(1)}s`, 'info');
+  }
+
+  // ========== MediaPipe ==========
+  let frameCount = 0;
+  let lastFpsTime = Date.now();
+
+  async function initMediaPipe() {
+    const faceMesh = new FaceMesh({
+      locateFile: (file) => `mediapipe/face_mesh/${file}`
+    });
+    faceMesh.setOptions({
+      maxNumFaces: 1, refineLandmarks: true,
+      minDetectionConfidence: 0.5, minTrackingConfidence: 0.5
+    });
+    faceMesh.onResults(onResults);
+
+    const video = document.getElementById('video');
+    const camera = new Camera(video, {
+      onFrame: async () => { await faceMesh.send({ image: video }); },
+      width: 640, height: 480
+    });
+    await camera.start();
+    addLog('カメラ・FaceMesh 起動完了', 'info');
+  }
+
+  function onResults(results) {
+    // FPS counter
+    frameCount++;
+    const now = Date.now();
+    if (now - lastFpsTime > 1000) {
+      fpsDisplayEl.textContent = frameCount + ' fps';
+      frameCount = 0;
+      lastFpsTime = now;
+    }
+
+    if (!results.multiFaceLandmarks || results.multiFaceLandmarks.length === 0) {
+      faceStatusEl.textContent = '顔未検出';
+      faceStatusEl.style.color = '#f44';
+      return;
+    }
+    faceStatusEl.textContent = '顔検出中';
+    faceStatusEl.style.color = '#4f4';
+
+    const landmarks = results.multiFaceLandmarks[0];
+    const entry = detectNod(landmarks, now);
+
+    if (!entry) return;
+
+    // Sensor bar
+    updateSensorBar(entry.deltaY, entry.threshold, entry.detected);
+
+    if (!sessionActive) return;
+
+    // Log sensor data
+    if (sensorLog.length < SENSOR_LOG_MAX) {
+      sensorLog.push(entry);
+    }
+
+    // Nod detected!
+    if (entry.detected) {
+      nodDetections.push(now);
+      flashNod();
+      addLog(`検出 #${nodDetections.length}: deltaY=${entry.deltaY.toFixed(4)} faceH=${entry.faceH.toFixed(3)}`, 'nod');
+      updateStats();
+    }
+  }
+
+  // ========== Init ==========
+  initMediaPipe();
+</script>
+</body>
+</html>

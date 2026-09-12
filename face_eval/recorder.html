@@ -1,0 +1,265 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8" />
+  <title>頭部・表情 録画 + 検出ログ</title>
+  <script src="https://cdn.jsdelivr.net/npm/@vladmandic/face-api/dist/face-api.js"></script>
+  <style>
+    body { font-family: sans-serif; max-width: 1000px; margin: 20px auto; padding: 0 20px; }
+    h1 { font-size: 20px; }
+    .row { margin: 12px 0; }
+    button { font-size: 16px; padding: 10px 20px; margin-right: 8px; cursor: pointer; }
+    button:disabled { opacity: 0.4; cursor: not-allowed; }
+    #status { padding: 10px; background: #f3f3f3; border-radius: 6px; }
+    #log { background: #111; color: #0f0; padding: 12px; border-radius: 6px; height: 180px;
+           overflow-y: auto; font-family: monospace; font-size: 12px; white-space: pre-wrap; }
+    .stage { position: relative; display: inline-block; }
+    video { width: 480px; height: 360px; background: #000; }
+    canvas.overlay { position: absolute; left: 0; top: 0; pointer-events: none; }
+    .panel { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+    input[type="text"] { width: 100%; padding: 8px; font-size: 14px; box-sizing: border-box; }
+    #expr-bars div { display: flex; align-items: center; margin: 2px 0; font-family: monospace; }
+    #expr-bars span.name { width: 100px; }
+    #expr-bars span.bar { display: inline-block; background: #4caf50; height: 12px; margin-right: 8px; }
+    .threshold { display: flex; align-items: center; gap: 8px; }
+  </style>
+</head>
+<body>
+  <h1>頭部・表情 録画 + 検出ログ</h1>
+
+  <div class="row">
+    <label>セッションID: </label>
+    <input id="sessionId" type="text" placeholder="例: subject01_face1" />
+  </div>
+
+  <div class="row">
+    <button id="startBtn">録画開始</button>
+    <button id="stopBtn" disabled>録画停止 + アップロード</button>
+    <span class="threshold">
+      頷きしきい値:
+      <input id="thresh" type="number" value="8" min="1" max="30" step="0.5" style="width:60px" />
+    </span>
+  </div>
+
+  <div class="panel">
+    <div class="stage">
+      <video id="video" autoplay muted playsinline></video>
+      <canvas id="overlay" class="overlay"></canvas>
+    </div>
+    <div>
+      <div><strong>検出状況</strong></div>
+      <div id="status">モデル読み込み待機中…</div>
+      <div style="margin-top:8px"><strong>表情確率</strong></div>
+      <div id="expr-bars"></div>
+      <div style="margin-top:8px"><strong>頷きカウント:</strong> <span id="nod-count">0</span></div>
+    </div>
+  </div>
+
+  <div class="row">
+    <strong>ログ:</strong>
+    <div id="log"></div>
+  </div>
+
+  <script>
+    const video = document.getElementById("video");
+    const overlay = document.getElementById("overlay");
+    const startBtn = document.getElementById("startBtn");
+    const stopBtn = document.getElementById("stopBtn");
+    const statusEl = document.getElementById("status");
+    const logEl = document.getElementById("log");
+    const exprBars = document.getElementById("expr-bars");
+    const nodCountEl = document.getElementById("nod-count");
+    const sessionIdEl = document.getElementById("sessionId");
+    const threshEl = document.getElementById("thresh");
+
+    const EXPR_NAMES = ["neutral", "happy", "sad", "angry", "fearful", "disgusted", "surprised"];
+    const SAMPLE_HZ = 10;
+
+    let modelsLoaded = false;
+    let mediaRecorder = null;
+    let chunks = [];
+    let stream = null;
+    let startTime = 0;
+    let frames = [];
+    let nodEvents = [];
+    let lastY = null;
+    let nodCooldown = false;
+    let detectTimer = null;
+    let mimeType = "";
+
+    function log(msg) {
+      const t = startTime ? ((performance.now() - startTime) / 1000).toFixed(2) : "0.00";
+      logEl.textContent += `[${t}s] ${msg}\n`;
+      logEl.scrollTop = logEl.scrollHeight;
+    }
+
+    function setStatus(msg) { statusEl.textContent = msg; }
+
+    function renderExpressions(exprs) {
+      exprBars.innerHTML = "";
+      EXPR_NAMES.forEach((name) => {
+        const v = exprs[name] || 0;
+        const row = document.createElement("div");
+        row.innerHTML = `<span class="name">${name}</span><span class="bar" style="width:${v*150}px"></span>${(v*100).toFixed(1)}%`;
+        exprBars.appendChild(row);
+      });
+    }
+
+    async function loadModels() {
+      const MODEL_URL = "./models";
+      setStatus("face-api モデル読み込み中…");
+      await Promise.all([
+        faceapi.nets.tinyFaceDetector.loadFromUri(MODEL_URL),
+        faceapi.nets.faceLandmark68TinyNet.loadFromUri(MODEL_URL),
+        faceapi.nets.faceExpressionNet.loadFromUri(MODEL_URL),
+      ]);
+      modelsLoaded = true;
+      setStatus("モデル読み込み完了。録画を開始してください");
+      log("face-api models loaded");
+    }
+
+    async function start() {
+      if (!modelsLoaded) {
+        setStatus("モデル未読み込み");
+        return;
+      }
+      const sessionId = sessionIdEl.value.trim() || `session_${Date.now()}`;
+
+      stream = await navigator.mediaDevices.getUserMedia({
+        video: { width: 640, height: 480, frameRate: 30 },
+        audio: true,
+      });
+      video.srcObject = stream;
+      await new Promise((r) => (video.onloadedmetadata = r));
+      video.play();
+      overlay.width = video.videoWidth;
+      overlay.height = video.videoHeight;
+
+      mimeType = MediaRecorder.isTypeSupported("video/webm;codecs=vp9,opus")
+        ? "video/webm;codecs=vp9,opus"
+        : "video/webm";
+      mediaRecorder = new MediaRecorder(stream, { mimeType });
+      chunks = [];
+      frames = [];
+      nodEvents = [];
+      lastY = null;
+      nodCooldown = false;
+
+      mediaRecorder.ondataavailable = (e) => { if (e.data.size > 0) chunks.push(e.data); };
+      mediaRecorder.onstop = onStopped;
+
+      startTime = performance.now();
+      mediaRecorder.start(1000);
+      startBtn.disabled = true;
+      stopBtn.disabled = false;
+      setStatus(`録画中... (${sessionId})`);
+      log(`録画開始: ${sessionId}`);
+
+      detectTimer = setInterval(detectOnce, Math.round(1000 / SAMPLE_HZ));
+    }
+
+    async function detectOnce() {
+      if (video.readyState < 2) return;
+      const options = new faceapi.TinyFaceDetectorOptions({ inputSize: 224, scoreThreshold: 0.5 });
+      const detection = await faceapi
+        .detectSingleFace(video, options)
+        .withFaceLandmarks(true)
+        .withFaceExpressions();
+
+      const t = (performance.now() - startTime) / 1000;
+      if (!detection) {
+        frames.push({ t, face: false });
+        return;
+      }
+
+      const nose = detection.landmarks.getNose();
+      const noseY = nose[3].y;
+      const exprs = detection.expressions;
+
+      const threshold = parseFloat(threshEl.value) || 8;
+      let nodDiff = 0;
+      if (lastY !== null) {
+        nodDiff = noseY - lastY;
+        if (!nodCooldown && nodDiff > threshold) {
+          nodEvents.push({ t, diff: nodDiff, threshold });
+          nodCountEl.textContent = nodEvents.length;
+          nodCooldown = true;
+          setTimeout(() => (nodCooldown = false), 800);
+          log(`NOD detected (diff=${nodDiff.toFixed(1)})`);
+        }
+      }
+      lastY = noseY;
+
+      const exprObj = {};
+      EXPR_NAMES.forEach((n) => (exprObj[n] = +exprs[n].toFixed(4)));
+      frames.push({ t, face: true, nose_y: +noseY.toFixed(2), expressions: exprObj });
+      renderExpressions(exprObj);
+
+      const ctx = overlay.getContext("2d");
+      ctx.clearRect(0, 0, overlay.width, overlay.height);
+      const box = detection.detection.box;
+      ctx.strokeStyle = "#0f0";
+      ctx.lineWidth = 2;
+      ctx.strokeRect(box.x, box.y, box.width, box.height);
+    }
+
+    function stop() {
+      if (!mediaRecorder || mediaRecorder.state === "inactive") return;
+      mediaRecorder.stop();
+      clearInterval(detectTimer);
+      startBtn.disabled = false;
+      stopBtn.disabled = true;
+      setStatus("停止 → アップロード中…");
+    }
+
+    async function onStopped() {
+      const sessionId = sessionIdEl.value.trim() || `session_${Date.now()}`;
+      stream.getTracks().forEach((t) => t.stop());
+      const ext = mimeType.includes("webm") ? "webm" : "mp4";
+      const blob = new Blob(chunks, { type: mimeType });
+
+      const meta = {
+        sessionId,
+        startedAt: new Date(Date.now() - (performance.now() - startTime)).toISOString(),
+        durationSec: (performance.now() - startTime) / 1000,
+        mimeType,
+        sampleHz: SAMPLE_HZ,
+        nodThreshold: parseFloat(threshEl.value) || 8,
+        nod_events: nodEvents,
+        frames,
+      };
+
+      const fd = new FormData();
+      fd.append("sessionId", sessionId);
+      fd.append("video", blob, `${sessionId}.${ext}`);
+      fd.append("meta", JSON.stringify(meta));
+
+      try {
+        const resp = await fetch("/upload", { method: "POST", body: fd });
+        if (!resp.ok) throw new Error("HTTP " + resp.status);
+        const r = await resp.json();
+        setStatus(`保存完了: ${r.saved.join(", ")} → ${r.dir}`);
+        log("アップロード完了 → " + r.saved.join(", "));
+      } catch (err) {
+        setStatus("アップロード失敗 → ローカルDLします: " + err.message);
+        downloadBlob(blob, `${sessionId}.${ext}`);
+        downloadBlob(new Blob([JSON.stringify(meta, null, 2)], { type: "application/json" }),
+                     `${sessionId}.json`);
+      }
+    }
+
+    function downloadBlob(blob, filename) {
+      const a = document.createElement("a");
+      a.href = URL.createObjectURL(blob);
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+    }
+
+    startBtn.addEventListener("click", start);
+    stopBtn.addEventListener("click", stop);
+    loadModels().catch((e) => setStatus("モデル読み込み失敗: " + e.message));
+  </script>
+</body>
+</html>

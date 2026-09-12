@@ -1,0 +1,332 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8" />
+  <title>頭部・表情 アノテーション</title>
+  <style>
+    body { font-family: sans-serif; max-width: 1100px; margin: 20px auto; padding: 0 20px; }
+    h1 { font-size: 20px; }
+    .panel { display: grid; grid-template-columns: 520px 1fr; gap: 16px; }
+    video { width: 480px; height: 360px; background: #000; }
+    button { padding: 8px 14px; cursor: pointer; }
+    .row { margin: 10px 0; }
+    table { width: 100%; border-collapse: collapse; font-size: 13px; }
+    th, td { border: 1px solid #ccc; padding: 4px 8px; text-align: left; }
+    .det-row.tp { background: #e8f5e9; }
+    .det-row.fp { background: #ffebee; }
+    .det-row.skip { background: #fafafa; }
+    .gold-add { background: #fff8e1; padding: 8px; border-radius: 6px; }
+    .expr-row { display: flex; align-items: center; gap: 6px; margin: 4px 0; }
+    select, input[type="text"], input[type="number"] {
+      padding: 4px 6px; font-size: 14px;
+    }
+    #log { background: #111; color: #0f0; padding: 12px; border-radius: 6px; height: 120px;
+           overflow-y: auto; font-family: monospace; font-size: 12px; white-space: pre-wrap; }
+  </style>
+</head>
+<body>
+<h1>頭部・表情 アノテーション</h1>
+
+<div class="row">
+  <strong>サーバ上のファイルから選択:</strong>
+  <select id="fileSelect" style="min-width:260px"></select>
+  <button id="loadBtn">読み込み</button>
+  <button id="refreshList">↻ 一覧更新</button>
+  <button id="downloadJson">JSONをDL</button>
+  <span id="loadStatus"></span>
+</div>
+<div class="row">
+  <strong>または手元のファイルから:</strong>
+  検出ログJSON: <input id="localJson" type="file" accept=".json" />
+  動画: <input id="localVideo" type="file" accept="video/*" />
+</div>
+
+<div class="panel">
+  <div>
+    <video id="video" controls></video>
+    <div class="row">
+      <button id="play">▶ 再生</button>
+      <button id="pause">⏸ 停止</button>
+      <button id="back">◀ 1s</button>
+      <button id="fwd">1s ▶</button>
+      現在: <span id="curT">0.00</span> s
+    </div>
+  </div>
+
+  <div>
+    <h3>① 頷き検出イベント (TP / FP 判定)</h3>
+    <div style="max-height:260px; overflow:auto">
+      <table id="nodTable">
+        <thead><tr><th>idx</th><th>t (s)</th><th>diff</th><th>判定</th><th>jump</th></tr></thead>
+        <tbody></tbody>
+      </table>
+    </div>
+
+    <h3>② 見逃し頷き (FN) を追加</h3>
+    <div class="gold-add">
+      動画を頷きの瞬間で停止 → 「現在時刻で追加」<br/>
+      <button id="addGoldNod">現在時刻で追加</button>
+      <ul id="goldNodList"></ul>
+    </div>
+
+    <h3>③ 表情の区間ラベル</h3>
+    <div class="gold-add">
+      区間を入力（start / end 秒、ラベル）<br/>
+      start: <input id="exprStart" type="number" step="0.1" style="width:80px"/>
+      end:   <input id="exprEnd" type="number" step="0.1" style="width:80px"/>
+      ラベル:
+      <select id="exprLabel">
+        <option>neutral</option><option>happy</option><option>sad</option>
+        <option>angry</option><option>fearful</option><option>disgusted</option>
+        <option>surprised</option>
+      </select>
+      <button id="addExpr">追加</button>
+      <button id="setStartNow">start=現在</button>
+      <button id="setEndNow">end=現在</button>
+      <ul id="exprList"></ul>
+    </div>
+  </div>
+</div>
+
+<div class="row">
+  <button id="saveBtn">アノテーションを保存</button>
+  <span id="saveStatus"></span>
+</div>
+
+<div class="row"><strong>ログ:</strong><div id="log"></div></div>
+
+<script>
+const video = document.getElementById("video");
+const metaUrlEl = document.getElementById("metaUrl");
+const loadStatus = document.getElementById("loadStatus");
+const curTEl = document.getElementById("curT");
+const nodTbody = document.querySelector("#nodTable tbody");
+const goldNodList = document.getElementById("goldNodList");
+const exprList = document.getElementById("exprList");
+const logEl = document.getElementById("log");
+
+let meta = null;
+let nodVerdicts = [];   // {idx, t, diff, verdict: 'tp'|'fp'|'skip'}
+let goldNods = [];      // [t, ...]
+let exprIntervals = []; // {start, end, label}
+
+function log(msg) {
+  logEl.textContent += msg + "\n";
+  logEl.scrollTop = logEl.scrollHeight;
+}
+
+const fileSelect = document.getElementById("fileSelect");
+const localJsonEl = document.getElementById("localJson");
+const localVideoEl = document.getElementById("localVideo");
+
+async function refreshList() {
+  try {
+    const r = await fetch("/list?ext=json");
+    const data = await r.json();
+    fileSelect.innerHTML = "";
+    if (data.files.length === 0) {
+      fileSelect.innerHTML = '<option value="">（data/ にJSON無し）</option>';
+      return;
+    }
+    data.files.forEach((f) => {
+      const opt = document.createElement("option");
+      opt.value = "/data/" + encodeURIComponent(f);
+      opt.textContent = f;
+      fileSelect.appendChild(opt);
+    });
+  } catch (e) {
+    loadStatus.textContent = "一覧取得失敗: " + e.message;
+  }
+}
+document.getElementById("refreshList").addEventListener("click", refreshList);
+refreshList();
+
+async function loadFromServer(url) {
+  try {
+    const resp = await fetch(url);
+    if (!resp.ok) throw new Error("HTTP " + resp.status);
+    meta = await resp.json();
+    loadStatus.textContent = `✓ ${meta.sessionId} (${meta.durationSec.toFixed(1)}s, nods=${meta.nod_events.length})`;
+
+    const base = url.replace(/\.json$/, "");
+    const candidates = [base + ".webm", base + ".mp4"];
+    for (const v of candidates) {
+      try {
+        const head = await fetch(v, { method: "HEAD" });
+        if (head.ok) { video.src = v; break; }
+      } catch (_) {}
+    }
+    renderNods();
+    log(`Loaded (server) ${meta.sessionId}: ${meta.nod_events.length} detected nods`);
+  } catch (e) {
+    loadStatus.textContent = "読み込み失敗: " + e.message;
+  }
+}
+
+document.getElementById("loadBtn").addEventListener("click", () => {
+  const url = fileSelect.value;
+  if (url) loadFromServer(url);
+});
+
+// ローカルファイル選択時の処理
+localJsonEl.addEventListener("change", async (e) => {
+  const file = e.target.files[0];
+  if (!file) return;
+  try {
+    const text = await file.text();
+    meta = JSON.parse(text);
+    loadStatus.textContent = `✓ (local) ${meta.sessionId} (${meta.durationSec.toFixed(1)}s, nods=${meta.nod_events.length})`;
+    renderNods();
+    log(`Loaded (local) ${meta.sessionId}`);
+  } catch (err) {
+    loadStatus.textContent = "JSON読み込み失敗: " + err.message;
+  }
+});
+
+localVideoEl.addEventListener("change", (e) => {
+  const file = e.target.files[0];
+  if (!file) return;
+  video.src = URL.createObjectURL(file);
+  log(`local video loaded: ${file.name}`);
+});
+
+// JSON を手元にダウンロード
+document.getElementById("downloadJson").addEventListener("click", async () => {
+  const url = fileSelect.value;
+  if (!url) return;
+  try {
+    const r = await fetch(url);
+    const blob = await r.blob();
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = decodeURIComponent(url.split("/").pop());
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+  } catch (e) {
+    loadStatus.textContent = "DL失敗: " + e.message;
+  }
+});
+
+function renderNods() {
+  nodTbody.innerHTML = "";
+  nodVerdicts = meta.nod_events.map((ev, i) => ({
+    idx: i, t: ev.t, diff: ev.diff, verdict: "skip",
+  }));
+  nodVerdicts.forEach((row) => {
+    const tr = document.createElement("tr");
+    tr.className = "det-row skip";
+    tr.dataset.idx = row.idx;
+    tr.innerHTML = `
+      <td>${row.idx}</td>
+      <td>${row.t.toFixed(2)}</td>
+      <td>${row.diff.toFixed(1)}</td>
+      <td>
+        <button data-verdict="tp">TP</button>
+        <button data-verdict="fp">FP</button>
+        <button data-verdict="skip">?</button>
+      </td>
+      <td><button class="jump">▶</button></td>
+    `;
+    tr.querySelector(".jump").addEventListener("click", () => seekTo(row.t - 1.0));
+    tr.querySelectorAll("button[data-verdict]").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        const v = btn.dataset.verdict;
+        row.verdict = v;
+        tr.className = "det-row " + v;
+      });
+    });
+    nodTbody.appendChild(tr);
+  });
+}
+
+function seekTo(t) {
+  if (t < 0) t = 0;
+  video.currentTime = t;
+  video.play();
+}
+
+video.addEventListener("timeupdate", () => {
+  curTEl.textContent = video.currentTime.toFixed(2);
+});
+document.getElementById("play").onclick = () => video.play();
+document.getElementById("pause").onclick = () => video.pause();
+document.getElementById("back").onclick = () => seekTo(video.currentTime - 1);
+document.getElementById("fwd").onclick = () => seekTo(video.currentTime + 1);
+
+document.getElementById("addGoldNod").addEventListener("click", () => {
+  const t = video.currentTime;
+  goldNods.push(t);
+  renderGoldNods();
+});
+function renderGoldNods() {
+  goldNodList.innerHTML = "";
+  goldNods.forEach((t, i) => {
+    const li = document.createElement("li");
+    li.innerHTML = `${t.toFixed(2)}s <button>削除</button>`;
+    li.querySelector("button").onclick = () => { goldNods.splice(i, 1); renderGoldNods(); };
+    goldNodList.appendChild(li);
+  });
+}
+
+document.getElementById("setStartNow").onclick =
+  () => (document.getElementById("exprStart").value = video.currentTime.toFixed(2));
+document.getElementById("setEndNow").onclick =
+  () => (document.getElementById("exprEnd").value = video.currentTime.toFixed(2));
+
+document.getElementById("addExpr").addEventListener("click", () => {
+  const start = parseFloat(document.getElementById("exprStart").value);
+  const end = parseFloat(document.getElementById("exprEnd").value);
+  const label = document.getElementById("exprLabel").value;
+  if (isNaN(start) || isNaN(end) || end <= start) {
+    alert("start < end の数値を入力してください");
+    return;
+  }
+  exprIntervals.push({ start, end, label });
+  renderExprList();
+});
+function renderExprList() {
+  exprList.innerHTML = "";
+  exprIntervals.forEach((iv, i) => {
+    const li = document.createElement("li");
+    li.innerHTML = `${iv.start.toFixed(2)} - ${iv.end.toFixed(2)} s : ${iv.label}
+                    <button>削除</button>`;
+    li.querySelector("button").onclick = () => { exprIntervals.splice(i, 1); renderExprList(); };
+    exprList.appendChild(li);
+  });
+}
+
+document.getElementById("saveBtn").addEventListener("click", async () => {
+  if (!meta) return;
+  const payload = {
+    sessionId: meta.sessionId,
+    durationSec: meta.durationSec,
+    nod_verdicts: nodVerdicts,  // 検出イベントへのTP/FP判定
+    gold_nods_extra: goldNods,  // 検出に無かった頷き(FNソース)
+    expression_intervals: exprIntervals,
+    annotatedAt: new Date().toISOString(),
+  };
+  // ローカルへDL（保険）
+  const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = `${meta.sessionId}.annotation.json`;
+  document.body.appendChild(a); a.click(); document.body.removeChild(a);
+
+  try {
+    const resp = await fetch("/save_annotation", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+    if (!resp.ok) throw new Error("HTTP " + resp.status);
+    const r = await resp.json();
+    document.getElementById("saveStatus").textContent = "保存: server=" + r.saved + " + ブラウザDL";
+    log("saved server → " + r.saved + " + local DL");
+  } catch (e) {
+    document.getElementById("saveStatus").textContent = "サーバ保存失敗（ローカルDLは成功）: " + e.message;
+  }
+});
+</script>
+</body>
+</html>

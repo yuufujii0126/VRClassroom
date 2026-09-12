@@ -1,0 +1,1350 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Project Manager - fujii</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'NVIDIA Sans', 'Segoe UI', -apple-system, BlinkMacSystemFont, sans-serif;
+            background: #000000;
+            min-height: 100vh;
+            color: #fff;
+        }
+
+        body::before {
+            content: '';
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background:
+                radial-gradient(ellipse at 20% 20%, rgba(118, 185, 0, 0.12) 0%, transparent 50%),
+                radial-gradient(ellipse at 80% 80%, rgba(118, 185, 0, 0.08) 0%, transparent 50%),
+                linear-gradient(180deg, #0a0a0a 0%, #1a1a1a 50%, #0a0a0a 100%);
+            z-index: -1;
+        }
+
+        .header {
+            background: linear-gradient(135deg, #1a1a1a 0%, #0a0a0a 100%);
+            border-bottom: 1px solid #2a2a2a;
+            padding: 16px 24px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+
+        .header-left {
+            display: flex;
+            align-items: center;
+            gap: 16px;
+        }
+
+        .back-btn {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            color: #888;
+            text-decoration: none;
+            padding: 8px 16px;
+            border-radius: 6px;
+            transition: all 0.2s;
+        }
+
+        .back-btn:hover {
+            color: #76b900;
+            background: rgba(118, 185, 0, 0.1);
+        }
+
+        .project-name {
+            font-size: 1.5rem;
+            font-weight: 600;
+            color: #fff;
+        }
+
+        .project-desc {
+            color: #666;
+            font-size: 0.9rem;
+            margin-left: 16px;
+        }
+
+        .header-actions {
+            display: flex;
+            gap: 12px;
+        }
+
+        .btn {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            padding: 10px 20px;
+            border: none;
+            border-radius: 6px;
+            font-size: 0.9rem;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.2s;
+            text-decoration: none;
+        }
+
+        .btn-primary {
+            background: linear-gradient(135deg, #76b900 0%, #5a8f00 100%);
+            color: #000;
+        }
+
+        .btn-primary:hover {
+            transform: translateY(-1px);
+            box-shadow: 0 4px 12px rgba(118, 185, 0, 0.3);
+        }
+
+        .btn-secondary {
+            background: #2a2a2a;
+            color: #fff;
+            border: 1px solid #3a3a3a;
+        }
+
+        .btn-secondary:hover {
+            background: #3a3a3a;
+        }
+
+        .main-container {
+            display: flex;
+            height: calc(100vh - 73px);
+        }
+
+        .sidebar {
+            width: 300px;
+            background: #0f0f0f;
+            border-right: 1px solid #2a2a2a;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .sidebar-header {
+            padding: 16px;
+            border-bottom: 1px solid #2a2a2a;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .sidebar-title {
+            font-size: 0.9rem;
+            font-weight: 600;
+            color: #888;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        .sidebar-actions {
+            display: flex;
+            gap: 8px;
+        }
+
+        .icon-btn {
+            width: 28px;
+            height: 28px;
+            border: none;
+            border-radius: 4px;
+            background: transparent;
+            color: #c5c5c5;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.1s;
+            padding: 0;
+        }
+
+        .icon-btn:hover {
+            background: rgba(90, 93, 94, 0.31);
+            color: #fff;
+        }
+
+        .icon-btn svg {
+            width: 16px;
+            height: 16px;
+            fill: currentColor;
+        }
+
+        /* VSCode style new folder icon with plus */
+        .icon-btn-new-folder {
+            position: relative;
+        }
+
+        .icon-btn-new-folder::after {
+            content: '+';
+            position: absolute;
+            bottom: 2px;
+            right: 2px;
+            font-size: 10px;
+            font-weight: bold;
+            color: #76b900;
+            line-height: 1;
+        }
+
+        .file-tree {
+            flex: 1;
+            overflow-y: auto;
+            padding: 8px;
+        }
+
+        .tree-item {
+            display: flex;
+            align-items: center;
+            padding: 8px 12px;
+            border-radius: 6px;
+            cursor: pointer;
+            transition: all 0.2s;
+            margin-bottom: 2px;
+            user-select: none;
+        }
+
+        .tree-item:hover {
+            background: rgba(118, 185, 0, 0.1);
+        }
+
+        .tree-item.selected {
+            background: rgba(118, 185, 0, 0.2);
+        }
+
+        .tree-item.dragover {
+            background: rgba(118, 185, 0, 0.3);
+            border: 1px dashed #76b900;
+        }
+
+        .tree-icon {
+            margin-right: 8px;
+            width: 18px;
+            height: 18px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            flex-shrink: 0;
+        }
+
+        .tree-icon svg {
+            width: 16px;
+            height: 16px;
+        }
+
+        .tree-name {
+            flex: 1;
+            font-size: 0.9rem;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .tree-size {
+            font-size: 0.75rem;
+            color: #666;
+            margin-left: 8px;
+        }
+
+        .tree-children {
+            margin-left: 20px;
+        }
+
+        .content-area {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+
+        /* Compact drop zone at top */
+        .drop-zone {
+            display: flex;
+            align-items: center;
+            gap: 16px;
+            padding: 24px 20px;
+            border: 2px dashed #2a2a2a;
+            margin: 12px;
+            border-radius: 8px;
+            transition: all 0.2s;
+            cursor: pointer;
+            flex-shrink: 0;
+            min-height: 80px;
+        }
+
+        .drop-zone.dragover {
+            border-color: #76b900;
+            background: rgba(118, 185, 0, 0.1);
+        }
+
+        .drop-zone-icon {
+            flex-shrink: 0;
+        }
+
+        .drop-zone-icon svg {
+            width: 32px;
+            height: 32px;
+            fill: #76b900;
+            opacity: 0.6;
+            transition: all 0.2s;
+        }
+
+        .drop-zone:hover .drop-zone-icon svg,
+        .drop-zone.dragover .drop-zone-icon svg {
+            opacity: 1;
+        }
+
+        .drop-zone-text {
+            font-size: 0.95rem;
+            color: #888;
+        }
+
+        .drop-zone-text strong {
+            color: #76b900;
+        }
+
+        .drop-zone-formats {
+            font-size: 0.75rem;
+            color: #555;
+            margin-left: auto;
+        }
+
+        /* Code preview area */
+        .preview-area {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            margin: 0 12px 12px 12px;
+            background: #0d0d0d;
+            border: 1px solid #2a2a2a;
+            border-radius: 8px;
+            overflow: hidden;
+        }
+
+        .preview-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 10px 16px;
+            background: #1a1a1a;
+            border-bottom: 1px solid #2a2a2a;
+        }
+
+        .preview-filename {
+            font-size: 0.9rem;
+            color: #888;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .preview-filename .icon {
+            width: 18px;
+            height: 18px;
+        }
+
+        .preview-actions {
+            display: flex;
+            gap: 8px;
+        }
+
+        .preview-btn {
+            padding: 6px 12px;
+            background: #2a2a2a;
+            border: none;
+            border-radius: 4px;
+            color: #888;
+            font-size: 0.8rem;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .preview-btn:hover {
+            background: #3a3a3a;
+            color: #fff;
+        }
+
+        .preview-content {
+            flex: 1;
+            overflow: auto;
+            padding: 0;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .code-view {
+            margin: 0;
+            padding: 16px;
+            font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+            font-size: 13px;
+            line-height: 1.5;
+            color: #d4d4d4;
+            background: #0d0d0d;
+            white-space: pre;
+            overflow-x: auto;
+            tab-size: 4;
+        }
+
+        .code-view .line-number {
+            display: inline-block;
+            width: 40px;
+            color: #555;
+            text-align: right;
+            padding-right: 16px;
+            margin-right: 16px;
+            border-right: 1px solid #2a2a2a;
+            user-select: none;
+        }
+
+        .preview-empty {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            color: #444;
+        }
+
+        .preview-empty-icon {
+            width: 80px;
+            height: 80px;
+            margin-bottom: 16px;
+            opacity: 0.6;
+            color: #555;
+        }
+
+        .preview-empty-icon svg {
+            width: 100%;
+            height: 100%;
+        }
+
+        .preview-empty-text {
+            font-size: 1rem;
+            color: #555;
+        }
+
+        /* Image preview */
+        .image-preview {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+            background: #111;
+        }
+
+        .image-preview img {
+            max-width: 100%;
+            max-height: 100%;
+            object-fit: contain;
+            border-radius: 4px;
+        }
+
+        /* Syntax highlighting colors */
+        .code-view .keyword { color: #569cd6; }
+        .code-view .string { color: #ce9178; }
+        .code-view .comment { color: #6a9955; }
+        .code-view .tag { color: #569cd6; }
+        .code-view .attr-name { color: #9cdcfe; }
+        .code-view .attr-value { color: #ce9178; }
+        .code-view .number { color: #b5cea8; }
+
+        .file-input {
+            display: none;
+        }
+
+        /* Context Menu */
+        .context-menu {
+            position: fixed;
+            background: #1a1a1a;
+            border: 1px solid #3a3a3a;
+            border-radius: 8px;
+            padding: 8px 0;
+            min-width: 180px;
+            z-index: 1000;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
+            display: none;
+        }
+
+        .context-menu.show {
+            display: block;
+        }
+
+        .context-menu-item {
+            padding: 10px 16px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            transition: all 0.2s;
+        }
+
+        .context-menu-item:hover {
+            background: rgba(118, 185, 0, 0.2);
+        }
+
+        .context-menu-item.danger:hover {
+            background: rgba(255, 100, 100, 0.2);
+            color: #ff6464;
+        }
+
+        .context-menu-divider {
+            height: 1px;
+            background: #2a2a2a;
+            margin: 8px 0;
+        }
+
+        /* Modal */
+        .modal-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0, 0, 0, 0.8);
+            display: none;
+            align-items: center;
+            justify-content: center;
+            z-index: 1000;
+        }
+
+        .modal-overlay.show {
+            display: flex;
+        }
+
+        .modal {
+            background: #1a1a1a;
+            border: 1px solid #3a3a3a;
+            border-radius: 12px;
+            padding: 24px;
+            min-width: 400px;
+            max-width: 90%;
+        }
+
+        .modal-title {
+            font-size: 1.2rem;
+            font-weight: 600;
+            margin-bottom: 20px;
+        }
+
+        .modal-input {
+            width: 100%;
+            padding: 12px 16px;
+            background: #0a0a0a;
+            border: 1px solid #3a3a3a;
+            border-radius: 8px;
+            color: #fff;
+            font-size: 1rem;
+            margin-bottom: 20px;
+        }
+
+        .modal-input:focus {
+            outline: none;
+            border-color: #76b900;
+        }
+
+        .modal-actions {
+            display: flex;
+            gap: 12px;
+            justify-content: flex-end;
+        }
+
+        /* Upload progress */
+        .upload-progress {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            background: #1a1a1a;
+            border: 1px solid #3a3a3a;
+            border-radius: 12px;
+            padding: 16px;
+            min-width: 300px;
+            z-index: 1000;
+            display: none;
+        }
+
+        .upload-progress.show {
+            display: block;
+        }
+
+        .upload-item {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            margin-bottom: 8px;
+        }
+
+        .upload-name {
+            flex: 1;
+            font-size: 0.85rem;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .upload-status {
+            font-size: 0.8rem;
+            color: #76b900;
+        }
+
+        .upload-error {
+            color: #ff6464;
+        }
+
+        .progress-bar {
+            height: 4px;
+            background: #2a2a2a;
+            border-radius: 2px;
+            overflow: hidden;
+        }
+
+        .progress-fill {
+            height: 100%;
+            background: #76b900;
+            transition: width 0.3s;
+        }
+
+        /* Loading */
+        .loading {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 40px;
+            color: #666;
+        }
+
+        .loading-spinner {
+            width: 32px;
+            height: 32px;
+            border: 3px solid #222;
+            border-top-color: #76b900;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin-right: 12px;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+
+        /* Toast */
+        .toast {
+            position: fixed;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%) translateY(100px);
+            background: #1a1a1a;
+            border: 1px solid #3a3a3a;
+            border-radius: 8px;
+            padding: 12px 24px;
+            z-index: 1001;
+            transition: transform 0.3s;
+        }
+
+        .toast.show {
+            transform: translateX(-50%) translateY(0);
+        }
+
+        .toast.success {
+            border-color: #76b900;
+        }
+
+        .toast.error {
+            border-color: #ff6464;
+        }
+
+        @media (max-width: 768px) {
+            .sidebar {
+                width: 250px;
+            }
+
+            .project-desc {
+                display: none;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <div class="header-left">
+            <a href="index.html" class="back-btn">
+                <span>←</span>
+                <span>戻る</span>
+            </a>
+            <h1 class="project-name" id="projectName">Loading...</h1>
+            <span class="project-desc" id="projectDesc"></span>
+        </div>
+        <div class="header-actions">
+            <a id="previewBtn" href="#" target="_blank" class="btn btn-secondary">
+                <span>👁</span>
+                <span>プレビュー</span>
+            </a>
+        </div>
+    </div>
+
+    <div class="main-container">
+        <div class="sidebar">
+            <div class="sidebar-header">
+                <span class="sidebar-title">ファイル</span>
+                <div class="sidebar-actions">
+                    <button class="icon-btn icon-btn-new-folder" onclick="showNewFolderModal()" title="新規フォルダ">
+                        <svg viewBox="0 0 16 16" xmlns="http://www.w3.org/2000/svg">
+                            <path d="M14.5 3H7.71l-.85-.85L6.51 2h-5l-.5.5v11l.5.5h13l.5-.5v-10L14.5 3zm-.51 8.49V13h-12V3h4.29l.85.85.36.15H14v7.49z"/>
+                        </svg>
+                    </button>
+                    <button class="icon-btn" onclick="document.getElementById('fileInput').click()" title="ファイルを追加">
+                        <svg viewBox="0 0 16 16" xmlns="http://www.w3.org/2000/svg">
+                            <path d="M7.4 2h1.2v8H7.4V2z"/>
+                            <path d="M8 1L4 5h3v5h2V5h3L8 1z"/>
+                            <path d="M2 13v2h12v-2H2z"/>
+                        </svg>
+                    </button>
+                    <button class="icon-btn" onclick="loadProject()" title="更新">
+                        <svg viewBox="0 0 16 16" xmlns="http://www.w3.org/2000/svg">
+                            <path fill-rule="evenodd" clip-rule="evenodd" d="M5.563 2.516A6 6 0 0 1 14 8h-1a5 5 0 0 0-9.398-2.386l1.398.466-3.5 1.82V4l1.063 2.516zM2 8a5 5 0 0 0 9.398 2.386l-1.398-.466L13.5 8.1V12l-1.063-2.516A6 6 0 0 1 2 8z"/>
+                        </svg>
+                    </button>
+                </div>
+            </div>
+            <div class="file-tree" id="fileTree">
+                <div class="loading">
+                    <div class="loading-spinner"></div>
+                    <span>読み込み中...</span>
+                </div>
+            </div>
+        </div>
+
+        <div class="content-area">
+            <div class="drop-zone" id="dropZone">
+                <div class="drop-zone-icon">
+                    <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                        <path d="M19.35 10.04C18.67 6.59 15.64 4 12 4 9.11 4 6.6 5.64 5.35 8.04 2.34 8.36 0 10.91 0 14c0 3.31 2.69 6 6 6h13c2.76 0 5-2.24 5-5 0-2.64-2.05-4.78-4.65-4.96zM14 13v4h-4v-4H7l5-5 5 5h-3z"/>
+                    </svg>
+                </div>
+                <div class="drop-zone-text">ファイルをドラッグ&ドロップ または <strong>クリック</strong></div>
+                <div class="drop-zone-formats">HTML, CSS, JS, GLB, PNG, JPG, MP3, MP4...</div>
+            </div>
+
+            <div class="preview-area" id="previewArea">
+                <div class="preview-header" id="previewHeader" style="display: none;">
+                    <div class="preview-filename">
+                        <span class="icon" id="previewIcon"></span>
+                        <span id="previewFilename">ファイルを選択</span>
+                    </div>
+                    <div class="preview-actions">
+                        <button class="preview-btn" onclick="openInNewTab()">新しいタブで開く</button>
+                    </div>
+                </div>
+                <div class="preview-content" id="previewContent">
+                    <div class="preview-empty">
+                        <div class="preview-empty-icon">
+                            <svg viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg">
+                                <!-- ドキュメント -->
+                                <rect x="12" y="8" width="40" height="48" rx="4" fill="none" stroke="currentColor" stroke-width="2"/>
+                                <path d="M20 20h24M20 28h24M20 36h16" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+                                <!-- 目のアイコン（右下） -->
+                                <ellipse cx="44" cy="46" rx="10" ry="6" fill="#1a1a1a" stroke="#76b900" stroke-width="1.5"/>
+                                <circle cx="44" cy="46" r="3" fill="#76b900"/>
+                            </svg>
+                        </div>
+                        <div class="preview-empty-text">ファイルをクリックしてプレビュー</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <input type="file" id="fileInput" class="file-input" multiple>
+
+    <!-- Context Menu -->
+    <div class="context-menu" id="contextMenu">
+        <div class="context-menu-item" onclick="handleContextAction('rename')">
+            <span>✏️</span>
+            <span>名前を変更</span>
+        </div>
+        <div class="context-menu-item" onclick="handleContextAction('move')">
+            <span>📁</span>
+            <span>移動</span>
+        </div>
+        <div class="context-menu-divider"></div>
+        <div class="context-menu-item danger" onclick="handleContextAction('delete')">
+            <span>🗑</span>
+            <span>削除</span>
+        </div>
+    </div>
+
+    <!-- New Folder Modal -->
+    <div class="modal-overlay" id="newFolderModal">
+        <div class="modal">
+            <h2 class="modal-title">新規フォルダ作成</h2>
+            <input type="text" class="modal-input" id="newFolderName" placeholder="フォルダ名">
+            <div class="modal-actions">
+                <button class="btn btn-secondary" onclick="closeModal('newFolderModal')">キャンセル</button>
+                <button class="btn btn-primary" onclick="createFolder()">作成</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Rename Modal -->
+    <div class="modal-overlay" id="renameModal">
+        <div class="modal">
+            <h2 class="modal-title">名前を変更</h2>
+            <input type="text" class="modal-input" id="newName" placeholder="新しい名前">
+            <div class="modal-actions">
+                <button class="btn btn-secondary" onclick="closeModal('renameModal')">キャンセル</button>
+                <button class="btn btn-primary" onclick="renameItem()">変更</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Move Modal -->
+    <div class="modal-overlay" id="moveModal">
+        <div class="modal">
+            <h2 class="modal-title">移動先を選択</h2>
+            <div id="moveFolderList" style="max-height: 300px; overflow-y: auto; margin-bottom: 20px;"></div>
+            <div class="modal-actions">
+                <button class="btn btn-secondary" onclick="closeModal('moveModal')">キャンセル</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Upload Progress -->
+    <div class="upload-progress" id="uploadProgress">
+        <div id="uploadList"></div>
+    </div>
+
+    <!-- Toast -->
+    <div class="toast" id="toast"></div>
+
+    <script>
+        const FOLDER = 'fujii';
+        const urlParams = new URLSearchParams(window.location.search);
+        const PROJECT = urlParams.get('name');
+
+        if (!PROJECT) {
+            window.location.href = 'index.html';
+        }
+
+        let projectData = null;
+        let selectedItem = null;
+        let contextTarget = null;
+        let currentPreviewPath = null;
+
+        // File types that can be previewed as code
+        const CODE_EXTENSIONS = ['.html', '.css', '.js', '.json', '.txt', '.xml', '.svg', '.md'];
+        const IMAGE_EXTENSIONS = ['.png', '.jpg', '.jpeg', '.gif', '.webp', '.svg'];
+
+        // API helper
+        async function api(endpoint, options = {}) {
+            const response = await fetch(`/webxr/api/projects/${FOLDER}/${PROJECT}${endpoint}`, options);
+            return response.json();
+        }
+
+        // Load project data
+        async function loadProject() {
+            try {
+                projectData = await api('');
+                document.getElementById('projectName').textContent = projectData.name;
+                document.getElementById('projectDesc').textContent = projectData.description || '';
+                document.getElementById('previewBtn').href = `/webxr/${FOLDER}/${PROJECT}/index.html`;
+                renderFileTree(projectData.files || []);
+            } catch (e) {
+                console.error('Failed to load project:', e);
+                showToast('プロジェクトの読み込みに失敗しました', 'error');
+            }
+        }
+
+        // Render file tree
+        function renderFileTree(files, container = null, parentPath = '') {
+            if (!container) {
+                container = document.getElementById('fileTree');
+                container.innerHTML = '';
+            }
+
+            // Sort: directories first, then files
+            const sorted = [...files].sort((a, b) => {
+                if (a.type === 'directory' && b.type !== 'directory') return -1;
+                if (a.type !== 'directory' && b.type === 'directory') return 1;
+                return a.name.localeCompare(b.name);
+            });
+
+            sorted.forEach(item => {
+                const itemPath = parentPath ? `${parentPath}/${item.name}` : item.name;
+                const div = document.createElement('div');
+                div.className = 'tree-item';
+                div.dataset.path = itemPath;
+                div.dataset.type = item.type;
+                div.dataset.ext = item.ext || '';
+                div.draggable = true;
+
+                const icon = item.type === 'directory' ? '📁' : getFileIcon(item.ext || '');
+                const sizeStr = item.size ? formatSize(item.size) : '';
+
+                div.innerHTML = `
+                    <span class="tree-icon">${icon}</span>
+                    <span class="tree-name">${item.name}</span>
+                    ${sizeStr ? `<span class="tree-size">${sizeStr}</span>` : ''}
+                `;
+
+                div.addEventListener('click', () => selectItem(div));
+                div.addEventListener('contextmenu', (e) => showContextMenu(e, div));
+                div.addEventListener('dblclick', () => {
+                    if (item.type === 'file') {
+                        window.open(`/webxr/${FOLDER}/${PROJECT}/${itemPath}`, '_blank');
+                    }
+                });
+
+                // Drag & drop for moving files
+                if (item.type === 'directory') {
+                    div.addEventListener('dragover', (e) => {
+                        e.preventDefault();
+                        div.classList.add('dragover');
+                    });
+                    div.addEventListener('dragleave', () => {
+                        div.classList.remove('dragover');
+                    });
+                    div.addEventListener('drop', async (e) => {
+                        e.preventDefault();
+                        div.classList.remove('dragover');
+                        const srcPath = e.dataTransfer.getData('text/plain');
+                        if (srcPath && srcPath !== itemPath) {
+                            const srcName = srcPath.split('/').pop();
+                            await moveItem(srcPath, `${itemPath}/${srcName}`);
+                        }
+                    });
+                }
+
+                div.addEventListener('dragstart', (e) => {
+                    e.dataTransfer.setData('text/plain', itemPath);
+                });
+
+                container.appendChild(div);
+
+                // Render children for directories
+                if (item.type === 'directory' && item.children && item.children.length > 0) {
+                    const childContainer = document.createElement('div');
+                    childContainer.className = 'tree-children';
+                    container.appendChild(childContainer);
+                    renderFileTree(item.children, childContainer, itemPath);
+                }
+            });
+        }
+
+        function getFileIcon(ext) {
+            const icons = {
+                // HTML - オレンジ背景に「HTML」テキスト
+                '.html': '<svg viewBox="0 0 32 32"><rect fill="#E44D26" width="32" height="32" rx="3"/><text x="16" y="20" text-anchor="middle" fill="#fff" font-family="Arial,sans-serif" font-size="9" font-weight="bold">HTML</text></svg>',
+                // CSS - ブルー
+                '.css': '<svg viewBox="0 0 32 32"><rect fill="#1572B6" width="32" height="32" rx="3"/><text x="16" y="20" text-anchor="middle" fill="#fff" font-family="Arial,sans-serif" font-size="10" font-weight="bold">CSS</text></svg>',
+                // JavaScript - イエロー背景に「JS」テキスト
+                '.js': '<svg viewBox="0 0 32 32"><rect fill="#F7DF1E" width="32" height="32" rx="3"/><text x="16" y="21" text-anchor="middle" fill="#000" font-family="Arial,sans-serif" font-size="14" font-weight="bold">JS</text></svg>',
+                // JSON - イエロー背景にテキスト
+                '.json': '<svg viewBox="0 0 32 32"><rect fill="#F5DE19" width="32" height="32" rx="3"/><text x="16" y="20" text-anchor="middle" fill="#000" font-family="Arial,sans-serif" font-size="9" font-weight="bold">JSON</text></svg>',
+                // 3Dモデル - パープル背景にテキスト
+                '.glb': '<svg viewBox="0 0 32 32"><rect fill="#8B5CF6" width="32" height="32" rx="3"/><text x="16" y="20" text-anchor="middle" fill="#fff" font-family="Arial,sans-serif" font-size="10" font-weight="bold">GLB</text></svg>',
+                '.gltf': '<svg viewBox="0 0 32 32"><rect fill="#8B5CF6" width="32" height="32" rx="3"/><text x="16" y="19" text-anchor="middle" fill="#fff" font-family="Arial,sans-serif" font-size="8" font-weight="bold">GLTF</text></svg>',
+                '.obj': '<svg viewBox="0 0 32 32"><rect fill="#8B5CF6" width="32" height="32" rx="3"/><text x="16" y="20" text-anchor="middle" fill="#fff" font-family="Arial,sans-serif" font-size="10" font-weight="bold">OBJ</text></svg>',
+                '.fbx': '<svg viewBox="0 0 32 32"><rect fill="#8B5CF6" width="32" height="32" rx="3"/><text x="16" y="20" text-anchor="middle" fill="#fff" font-family="Arial,sans-serif" font-size="10" font-weight="bold">FBX</text></svg>',
+                // 画像 - グリーン背景にテキスト
+                '.png': '<svg viewBox="0 0 32 32"><rect fill="#4ADE80" width="32" height="32" rx="3"/><text x="16" y="20" text-anchor="middle" fill="#fff" font-family="Arial,sans-serif" font-size="10" font-weight="bold">PNG</text></svg>',
+                '.jpg': '<svg viewBox="0 0 32 32"><rect fill="#4ADE80" width="32" height="32" rx="3"/><text x="16" y="20" text-anchor="middle" fill="#fff" font-family="Arial,sans-serif" font-size="10" font-weight="bold">JPG</text></svg>',
+                '.jpeg': '<svg viewBox="0 0 32 32"><rect fill="#4ADE80" width="32" height="32" rx="3"/><text x="16" y="20" text-anchor="middle" fill="#fff" font-family="Arial,sans-serif" font-size="10" font-weight="bold">JPG</text></svg>',
+                '.gif': '<svg viewBox="0 0 32 32"><rect fill="#4ADE80" width="32" height="32" rx="3"/><text x="16" y="20" text-anchor="middle" fill="#fff" font-family="Arial,sans-serif" font-size="10" font-weight="bold">GIF</text></svg>',
+                '.webp': '<svg viewBox="0 0 32 32"><rect fill="#4ADE80" width="32" height="32" rx="3"/><text x="16" y="19" text-anchor="middle" fill="#fff" font-family="Arial,sans-serif" font-size="8" font-weight="bold">WEBP</text></svg>',
+                '.svg': '<svg viewBox="0 0 32 32"><rect fill="#FFB13B" width="32" height="32" rx="3"/><text x="16" y="20" text-anchor="middle" fill="#fff" font-family="Arial,sans-serif" font-size="10" font-weight="bold">SVG</text></svg>',
+                // 音声 - ピンク背景にテキスト
+                '.mp3': '<svg viewBox="0 0 32 32"><rect fill="#EC4899" width="32" height="32" rx="3"/><text x="16" y="20" text-anchor="middle" fill="#fff" font-family="Arial,sans-serif" font-size="10" font-weight="bold">MP3</text></svg>',
+                '.wav': '<svg viewBox="0 0 32 32"><rect fill="#EC4899" width="32" height="32" rx="3"/><text x="16" y="20" text-anchor="middle" fill="#fff" font-family="Arial,sans-serif" font-size="10" font-weight="bold">WAV</text></svg>',
+                '.ogg': '<svg viewBox="0 0 32 32"><rect fill="#EC4899" width="32" height="32" rx="3"/><text x="16" y="20" text-anchor="middle" fill="#fff" font-family="Arial,sans-serif" font-size="10" font-weight="bold">OGG</text></svg>',
+                '.m4a': '<svg viewBox="0 0 32 32"><rect fill="#EC4899" width="32" height="32" rx="3"/><text x="16" y="20" text-anchor="middle" fill="#fff" font-family="Arial,sans-serif" font-size="10" font-weight="bold">M4A</text></svg>',
+                // 動画 - レッド背景にテキスト
+                '.mp4': '<svg viewBox="0 0 32 32"><rect fill="#EF4444" width="32" height="32" rx="3"/><text x="16" y="20" text-anchor="middle" fill="#fff" font-family="Arial,sans-serif" font-size="10" font-weight="bold">MP4</text></svg>',
+                '.webm': '<svg viewBox="0 0 32 32"><rect fill="#EF4444" width="32" height="32" rx="3"/><text x="16" y="19" text-anchor="middle" fill="#fff" font-family="Arial,sans-serif" font-size="8" font-weight="bold">WEBM</text></svg>',
+                // テキスト - グレー背景にテキスト
+                '.txt': '<svg viewBox="0 0 32 32"><rect fill="#9CA3AF" width="32" height="32" rx="3"/><text x="16" y="20" text-anchor="middle" fill="#fff" font-family="Arial,sans-serif" font-size="10" font-weight="bold">TXT</text></svg>',
+                // デフォルト
+                'default': '<svg viewBox="0 0 32 32"><rect fill="#6B7280" width="32" height="32" rx="3"/><text x="16" y="20" text-anchor="middle" fill="#fff" font-family="Arial,sans-serif" font-size="9" font-weight="bold">FILE</text></svg>'
+            };
+            return icons[ext] || icons['default'];
+        }
+
+        function formatSize(bytes) {
+            if (bytes < 1024) return bytes + ' B';
+            if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
+            return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
+        }
+
+        function selectItem(div) {
+            document.querySelectorAll('.tree-item.selected').forEach(el => el.classList.remove('selected'));
+            div.classList.add('selected');
+            selectedItem = {
+                path: div.dataset.path,
+                type: div.dataset.type,
+                ext: div.dataset.ext || ''
+            };
+
+            // Show preview for files
+            if (div.dataset.type === 'file') {
+                showPreview(div.dataset.path, div.dataset.ext || '');
+            }
+        }
+
+        // Preview functions
+        async function showPreview(filePath, ext) {
+            currentPreviewPath = filePath;
+            const previewHeader = document.getElementById('previewHeader');
+            const previewContent = document.getElementById('previewContent');
+            const previewFilename = document.getElementById('previewFilename');
+            const previewIcon = document.getElementById('previewIcon');
+
+            previewHeader.style.display = 'flex';
+            previewFilename.textContent = filePath;
+            previewIcon.innerHTML = getFileIcon(ext);
+
+            // Check file type
+            if (IMAGE_EXTENSIONS.includes(ext)) {
+                // Image preview
+                const imgUrl = `/webxr/${FOLDER}/${PROJECT}/${filePath}`;
+                previewContent.innerHTML = `
+                    <div class="image-preview">
+                        <img src="${imgUrl}" alt="${filePath}">
+                    </div>
+                `;
+            } else if (CODE_EXTENSIONS.includes(ext)) {
+                // Code preview
+                previewContent.innerHTML = '<div class="loading"><div class="loading-spinner"></div><span>読み込み中...</span></div>';
+
+                try {
+                    const response = await fetch(`/webxr/${FOLDER}/${PROJECT}/${filePath}`);
+                    let text = await response.text();
+
+                    // Limit to first 500 lines to avoid performance issues
+                    const lines = text.split('\n');
+                    const maxLines = 500;
+                    const truncated = lines.length > maxLines;
+                    if (truncated) {
+                        text = lines.slice(0, maxLines).join('\n');
+                    }
+
+                    // Escape HTML and add line numbers
+                    const escaped = escapeHtml(text);
+                    const numbered = escaped.split('\n').map((line, i) =>
+                        `<span class="line-number">${i + 1}</span>${line}`
+                    ).join('\n');
+
+                    previewContent.innerHTML = `<pre class="code-view">${numbered}</pre>`;
+                    if (truncated) {
+                        previewContent.innerHTML += `<div style="padding: 10px 16px; color: #666; font-size: 0.8rem; border-top: 1px solid #2a2a2a;">... ${lines.length - maxLines} 行省略</div>`;
+                    }
+                } catch (e) {
+                    previewContent.innerHTML = `<div class="preview-empty"><div class="preview-empty-icon">⚠️</div><div class="preview-empty-text">ファイルの読み込みに失敗しました</div></div>`;
+                }
+            } else {
+                // Binary or unknown file
+                previewContent.innerHTML = `
+                    <div class="preview-empty">
+                        <div class="preview-empty-icon">${getFileIconEmoji(ext)}</div>
+                        <div class="preview-empty-text">このファイル形式はプレビューできません</div>
+                        <button class="preview-btn" style="margin-top: 16px;" onclick="openInNewTab()">ダウンロード / 開く</button>
+                    </div>
+                `;
+            }
+        }
+
+        function escapeHtml(text) {
+            return text
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;')
+                .replace(/'/g, '&#039;');
+        }
+
+        function getFileIconEmoji(ext) {
+            const map = {
+                '.glb': '🎮', '.gltf': '🎮', '.obj': '🎮', '.fbx': '🎮',
+                '.mp3': '🎵', '.wav': '🎵', '.ogg': '🎵', '.m4a': '🎵',
+                '.mp4': '🎬', '.webm': '🎬',
+                '.png': '🖼️', '.jpg': '🖼️', '.jpeg': '🖼️', '.gif': '🖼️', '.webp': '🖼️',
+            };
+            return map[ext] || '📄';
+        }
+
+        function openInNewTab() {
+            if (currentPreviewPath) {
+                window.open(`/webxr/${FOLDER}/${PROJECT}/${currentPreviewPath}`, '_blank');
+            }
+        }
+
+        // Context menu
+        function showContextMenu(e, div) {
+            e.preventDefault();
+            selectItem(div);
+            contextTarget = {
+                path: div.dataset.path,
+                type: div.dataset.type
+            };
+
+            const menu = document.getElementById('contextMenu');
+            menu.style.left = e.pageX + 'px';
+            menu.style.top = e.pageY + 'px';
+            menu.classList.add('show');
+        }
+
+        document.addEventListener('click', () => {
+            document.getElementById('contextMenu').classList.remove('show');
+        });
+
+        async function handleContextAction(action) {
+            if (!contextTarget) return;
+
+            switch (action) {
+                case 'rename':
+                    document.getElementById('newName').value = contextTarget.path.split('/').pop();
+                    showModal('renameModal');
+                    break;
+                case 'move':
+                    showMoveModal();
+                    break;
+                case 'delete':
+                    if (confirm(`「${contextTarget.path}」を削除しますか？`)) {
+                        await deleteItem(contextTarget.path);
+                    }
+                    break;
+            }
+        }
+
+        // Modals
+        function showModal(id) {
+            document.getElementById(id).classList.add('show');
+        }
+
+        function closeModal(id) {
+            document.getElementById(id).classList.remove('show');
+        }
+
+        function showNewFolderModal() {
+            document.getElementById('newFolderName').value = '';
+            showModal('newFolderModal');
+        }
+
+        async function createFolder() {
+            const name = document.getElementById('newFolderName').value.trim();
+            if (!name) return;
+
+            const parentPath = selectedItem?.type === 'directory' ? selectedItem.path : '';
+            const fullPath = parentPath ? `${parentPath}/${name}` : name;
+
+            try {
+                const result = await api('/mkdir', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ path: fullPath })
+                });
+
+                if (result.error) throw new Error(result.error);
+
+                closeModal('newFolderModal');
+                showToast('フォルダを作成しました', 'success');
+                loadProject();
+            } catch (e) {
+                showToast('フォルダの作成に失敗しました: ' + e.message, 'error');
+            }
+        }
+
+        async function renameItem() {
+            const newName = document.getElementById('newName').value.trim();
+            if (!newName || !contextTarget) return;
+
+            try {
+                const result = await api('/rename', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ path: contextTarget.path, newName })
+                });
+
+                if (result.error) throw new Error(result.error);
+
+                closeModal('renameModal');
+                showToast('名前を変更しました', 'success');
+                loadProject();
+            } catch (e) {
+                showToast('名前の変更に失敗しました: ' + e.message, 'error');
+            }
+        }
+
+        function showMoveModal() {
+            const list = document.getElementById('moveFolderList');
+            list.innerHTML = '';
+
+            // Add root option
+            const rootDiv = document.createElement('div');
+            rootDiv.className = 'tree-item';
+            rootDiv.innerHTML = '<span class="tree-icon">📁</span><span class="tree-name">/ (ルート)</span>';
+            rootDiv.onclick = () => moveItem(contextTarget.path, contextTarget.path.split('/').pop());
+            list.appendChild(rootDiv);
+
+            // Add all directories
+            function addDirs(files, prefix = '') {
+                files.forEach(item => {
+                    if (item.type === 'directory') {
+                        const path = prefix ? `${prefix}/${item.name}` : item.name;
+                        if (path !== contextTarget.path && !path.startsWith(contextTarget.path + '/')) {
+                            const div = document.createElement('div');
+                            div.className = 'tree-item';
+                            div.innerHTML = `<span class="tree-icon">📁</span><span class="tree-name">${path}</span>`;
+                            div.onclick = () => {
+                                const srcName = contextTarget.path.split('/').pop();
+                                moveItem(contextTarget.path, `${path}/${srcName}`);
+                            };
+                            list.appendChild(div);
+                        }
+                        if (item.children) {
+                            addDirs(item.children, path);
+                        }
+                    }
+                });
+            }
+            addDirs(projectData.files || []);
+
+            showModal('moveModal');
+        }
+
+        async function moveItem(srcPath, destPath) {
+            try {
+                const result = await api('/move', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ src: srcPath, dest: destPath })
+                });
+
+                if (result.error) throw new Error(result.error);
+
+                closeModal('moveModal');
+                showToast('移動しました', 'success');
+                loadProject();
+            } catch (e) {
+                showToast('移動に失敗しました: ' + e.message, 'error');
+            }
+        }
+
+        async function deleteItem(itemPath) {
+            try {
+                const result = await api('/delete', {
+                    method: 'DELETE',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ path: itemPath })
+                });
+
+                if (result.error) throw new Error(result.error);
+
+                showToast('削除しました', 'success');
+                loadProject();
+            } catch (e) {
+                showToast('削除に失敗しました: ' + e.message, 'error');
+            }
+        }
+
+        // File upload
+        const dropZone = document.getElementById('dropZone');
+        const fileInput = document.getElementById('fileInput');
+
+        dropZone.addEventListener('click', () => fileInput.click());
+
+        dropZone.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            dropZone.classList.add('dragover');
+        });
+
+        dropZone.addEventListener('dragleave', () => {
+            dropZone.classList.remove('dragover');
+        });
+
+        dropZone.addEventListener('drop', (e) => {
+            e.preventDefault();
+            dropZone.classList.remove('dragover');
+            handleFiles(e.dataTransfer.files);
+        });
+
+        fileInput.addEventListener('change', () => {
+            handleFiles(fileInput.files);
+            fileInput.value = '';
+        });
+
+        async function handleFiles(files) {
+            if (files.length === 0) return;
+
+            const uploadProgress = document.getElementById('uploadProgress');
+            const uploadList = document.getElementById('uploadList');
+            uploadProgress.classList.add('show');
+            uploadList.innerHTML = '';
+
+            const targetPath = selectedItem?.type === 'directory' ? selectedItem.path : '';
+
+            for (const file of files) {
+                const itemDiv = document.createElement('div');
+                itemDiv.className = 'upload-item';
+                itemDiv.innerHTML = `
+                    <span class="upload-name">${file.name}</span>
+                    <span class="upload-status">アップロード中...</span>
+                `;
+                uploadList.appendChild(itemDiv);
+
+                try {
+                    const fileData = await new Promise((resolve, reject) => {
+                        const reader = new FileReader();
+                        reader.onload = () => {
+                            resolve(reader.result.split(',')[1].split('').reverse().join(''));
+                        };
+                        reader.onerror = reject;
+                        reader.readAsDataURL(file);
+                    });
+
+                    const response = await fetch(`/webxr/api/projects/${FOLDER}/${PROJECT}/store`, {
+                        method: 'PUT',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            files: [{ name: file.name, data: fileData }],
+                            targetPath: targetPath || '',
+                            scrambled: true
+                        }),
+                        credentials: 'include'
+                    });
+
+                    const result = await response.json();
+
+                    if (result.error) {
+                        itemDiv.querySelector('.upload-status').textContent = result.error;
+                        itemDiv.querySelector('.upload-status').classList.add('upload-error');
+                    } else {
+                        itemDiv.querySelector('.upload-status').textContent = '完了';
+                    }
+                } catch (e) {
+                    itemDiv.querySelector('.upload-status').textContent = 'エラー';
+                    itemDiv.querySelector('.upload-status').classList.add('upload-error');
+                }
+            }
+
+            setTimeout(() => {
+                uploadProgress.classList.remove('show');
+                loadProject();
+            }, 2000);
+        }
+
+        // Toast
+        function showToast(message, type = 'success') {
+            const toast = document.getElementById('toast');
+            toast.textContent = message;
+            toast.className = 'toast ' + type + ' show';
+            setTimeout(() => {
+                toast.classList.remove('show');
+            }, 3000);
+        }
+
+        // Initialize
+        loadProject();
+    </script>
+</body>
+</html>

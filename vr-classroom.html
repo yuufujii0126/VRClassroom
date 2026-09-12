@@ -1,0 +1,386 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <title>Japanese Classroom VR Environment with Eye Tracking</title>
+    <meta name="description" content="Japanese Classroom VR Environment with Eye Tracking" />
+
+    <!-- A-Frame関連のライブラリ -->
+    <script src="https://aframe.io/releases/1.6.0/aframe.min.js"></script>
+    <script src="/socket.io/socket.io.js"></script>
+    <script src="/easyrtc/easyrtc.js"></script>
+    <script src="/dist/networked-aframe.js"></script>
+    <script src="https://cdn.jsdelivr.net/gh/c-frame/aframe-extras@7.5.0/dist/aframe-extras.controls.min.js"></script>
+    <script src="/js/spawn-in-circle.component.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/aframe-randomizer-components@3.0.2/dist/aframe-randomizer-components.min.js"></script>
+
+    <!-- WebGazer -->
+    <script src="https://cdn.jsdelivr.net/npm/webgazer/dist/webgazer.js"></script>
+
+    <style>
+      #overlay {
+        position: absolute;
+        top: 0;
+        left: 0;
+        pointer-events: none;
+      }
+      #save-button {
+        position: fixed;
+        bottom: 20px;
+        right: 20px;
+        padding: 10px;
+        background-color: #4caf50;
+        color: white;
+        border: none;
+        border-radius: 5px;
+        cursor: pointer;
+        z-index: 10;
+      }
+      #calibration-points {
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        pointer-events: none;
+        z-index: 1000;
+      }
+      .calibration-point {
+        position: absolute;
+        width: 20px;
+        height: 20px;
+        background-color: red;
+        border-radius: 50%;
+        cursor: pointer;
+        pointer-events: all;
+      }
+      #start-calibration {
+        position: fixed;
+        top: 20px;
+        right: 20px;
+        padding: 10px;
+        background-color: #2196f3;
+        color: white;
+        border: none;
+        border-radius: 5px;
+        cursor: pointer;
+        z-index: 10;
+      }
+      #image-selector-container {
+        position: fixed;
+        bottom: 20px;
+        left: 20px;
+        z-index: 100;
+        background: rgba(255, 255, 255, 0.8);
+        padding: 10px;
+        border-radius: 5px;
+      }
+
+      .image-thumbnail {
+        width: 100px;
+        height: 60px;
+        object-fit: cover;
+        margin: 5px;
+        cursor: pointer;
+        border: 2px solid transparent;
+      }
+
+      .image-thumbnail.selected {
+        border-color: #2196f3;
+      }
+
+      #upload-button {
+        padding: 10px;
+        background-color: #2196f3;
+        color: white;
+        border: none;
+        border-radius: 5px;
+        cursor: pointer;
+        margin-bottom: 10px;
+      }
+    </style>
+
+    <script>
+      // Networked-Aframe関連のスクリプト
+      function onConnect() {
+        console.log('onConnect', new Date());
+      }
+
+      NAF.schemas.getComponentsOriginal = NAF.schemas.getComponents;
+      NAF.schemas.getComponents = (template) => {
+        if (!NAF.schemas.hasTemplate('#avatar-template')) {
+          NAF.schemas.add({
+            template: '#avatar-template',
+            components: [
+              'position',
+              'rotation',
+              {
+                selector: '.head',
+                component: 'material',
+                property: 'color'
+              }
+            ]
+          });
+        }
+        const components = NAF.schemas.getComponentsOriginal(template);
+        return components;
+      };
+    </script>
+  </head>
+
+  <body>
+    <a-scene
+      networked-scene="
+        room: classroom;
+        debug: true;
+        adapter: wseasyrtc;
+      "
+      renderer="physicallyCorrectLights: true;"
+    >
+      <a-assets>
+        <a-asset-item id="classroomGLB" src="japanese_classroom/scene.gltf"></a-asset-item>
+
+        <template id="rig-template">
+          <a-entity></a-entity>
+        </template>
+
+        <template id="avatar-template">
+          <a-entity class="avatar">
+            <a-sphere class="head" scale="1 1 1" random-color></a-sphere>
+            <a-entity class="face" position="0 0.05 0">
+              <a-sphere class="eye" color="white" position="0.06 0.05 -0.16" scale="0.04 0.04 0.04">
+                <a-sphere class="pupil" color="black" position="0 0 -1" scale="0.2 0.2 0.2"></a-sphere>
+              </a-sphere>
+              <a-sphere class="eye" color="white" position="-0.06 0.05 -0.16" scale="0.04 0.04 0.04">
+                <a-sphere class="pupil" color="black" position="0 0 -1" scale="0.2 0.2 0.2"></a-sphere>
+              </a-sphere>
+            </a-entity>
+          </a-entity>
+        </template>
+      </a-assets>
+
+      <a-entity gltf-model="#classroomGLB" scale="1 1 1" position="0 0 0"></a-entity>
+
+      <!-- スクリーン -->
+      <a-entity id="screen-container" position="-82 13 -23.5" rotation="0 90 0">
+        <a-plane id="screen" color="#333" width="40" height="8" position="0 0 0"> </a-plane>
+      </a-entity>
+
+      <a-entity light="type: ambient; intensity: 0.5"></a-entity>
+      <a-entity light="type: directional; intensity: 0.8" position="0 10 0"></a-entity>
+
+      <a-entity
+        id="rig"
+        movement-controls="fly:true;"
+        spawn-in-circle="radius:1;"
+        networked="template:#rig-template;"
+        position="0 0 0"
+      >
+        <a-entity
+          id="player"
+          camera
+          position="0 8 0"
+          look-controls
+          networked="template:#avatar-template;"
+          visible="false"
+        ></a-entity>
+      </a-entity>
+    </a-scene>
+
+    <!-- 視線追跡関連のHTML要素 -->
+    <canvas id="overlay" width="800" height="600"></canvas>
+    <button id="save-button">Save Gaze Data</button>
+    <button id="start-calibration">Start Calibration</button>
+    <div id="calibration-points"></div>
+
+    <!-- 画像選択用のUI -->
+    <div id="image-selector-container">
+      <input type="file" id="image-upload" accept="image/*" style="display: none" />
+      <button id="upload-button">Upload New Image</button>
+      <div id="image-thumbnails"></div>
+    </div>
+
+    <script>
+      // 画像管理用の配列
+      let uploadedImages = [];
+      const gazeData = [];
+      let calibrationPoints = [];
+      const numPoints = 9;
+
+      // 視線追跡関連の関数
+      function createCalibrationPoints() {
+        const container = document.getElementById('calibration-points');
+        container.innerHTML = '';
+        const positions = [
+          { x: '10%', y: '10%' },
+          { x: '50%', y: '10%' },
+          { x: '90%', y: '10%' },
+          { x: '10%', y: '50%' },
+          { x: '50%', y: '50%' },
+          { x: '90%', y: '50%' },
+          { x: '10%', y: '90%' },
+          { x: '50%', y: '90%' },
+          { x: '90%', y: '90%' }
+        ];
+
+        positions.forEach((pos, index) => {
+          const point = document.createElement('div');
+          point.className = 'calibration-point';
+          point.style.left = pos.x;
+          point.style.top = pos.y;
+          point.style.display = 'none';
+          point.addEventListener('click', () => handleCalibrationPoint(index));
+          container.appendChild(point);
+          calibrationPoints.push(point);
+        });
+      }
+
+      let currentPoint = 0;
+
+      function handleCalibrationPoint(index) {
+        if (index === currentPoint) {
+          calibrationPoints[currentPoint].style.display = 'none';
+          currentPoint++;
+          if (currentPoint < numPoints) {
+            calibrationPoints[currentPoint].style.display = 'block';
+          } else {
+            document.getElementById('calibration-points').style.display = 'none';
+            startGazeTracking();
+          }
+        }
+      }
+
+      // 画像アップロード・切り替え機能
+      function updateThumbnails() {
+        const container = document.getElementById('image-thumbnails');
+        container.innerHTML = '';
+
+        uploadedImages.forEach((image, index) => {
+          const thumbnail = document.createElement('img');
+          thumbnail.src = image.url;
+          thumbnail.className = 'image-thumbnail';
+          if (image.selected) {
+            thumbnail.classList.add('selected');
+          }
+          thumbnail.addEventListener('click', () => {
+            uploadedImages.forEach((img) => (img.selected = false));
+            image.selected = true;
+
+            const screen = document.querySelector('#screen');
+            screen.setAttribute('material', 'src', image.url);
+            adjustScreenAspectRatio(thumbnail);
+
+            updateThumbnails();
+          });
+          container.appendChild(thumbnail);
+        });
+      }
+
+      document.getElementById('upload-button').addEventListener('click', () => {
+        document.getElementById('image-upload').click();
+      });
+
+      document.getElementById('image-upload').addEventListener('change', (e) => {
+        const file = e.target.files[0];
+        if (file) {
+          const reader = new FileReader();
+          reader.onload = function (event) {
+            const newImage = {
+              url: event.target.result,
+              selected: true
+            };
+
+            uploadedImages.forEach((img) => (img.selected = false));
+            uploadedImages.push(newImage);
+
+            const img = document.createElement('img');
+            img.src = event.target.result;
+
+            img.onload = function () {
+              const screen = document.querySelector('#screen');
+              screen.setAttribute('material', 'src', event.target.result);
+              adjustScreenAspectRatio(this);
+
+              updateThumbnails();
+            };
+          };
+          reader.readAsDataURL(file);
+        }
+      });
+
+      function adjustScreenAspectRatio(imageElement) {
+        const screen = document.querySelector('#screen');
+        const aspectRatio = imageElement.width / imageElement.height;
+        const baseHeight = 3;
+        screen.setAttribute('width', baseHeight * aspectRatio);
+        screen.setAttribute('height', baseHeight);
+      }
+
+      // 視線追跡の初期化と開始
+      document.getElementById('start-calibration').addEventListener('click', () => {
+        createCalibrationPoints();
+        webgazer.clearData();
+        currentPoint = 0;
+        document.getElementById('calibration-points').style.display = 'block';
+        calibrationPoints[0].style.display = 'block';
+      });
+
+      function startGazeTracking() {
+        const overlay = document.getElementById('overlay');
+        const ctx = overlay.getContext('2d');
+
+        overlay.width = window.innerWidth;
+        overlay.height = window.innerHeight;
+
+        webgazer
+          .setGazeListener((data, elapsedTime) => {
+            if (data) {
+              const x = data.x;
+              const y = data.y;
+              drawGazePoint(ctx, x, y);
+
+              gazeData.push({
+                timestamp: elapsedTime,
+                screenX: x,
+                screenY: y
+              });
+            }
+          })
+          .begin();
+      }
+
+      window.onload = async () => {
+        await webgazer.setRegression('ridge').setTracker('TFFacemesh').begin();
+        console.log('WebGazer initialized');
+
+        updateThumbnails();
+      };
+
+      function drawGazePoint(ctx, x, y) {
+        ctx.clearRect(0, 0, ctx.canvas.width, ctx.canvas.height);
+        ctx.fillStyle = 'red';
+        ctx.beginPath();
+        ctx.arc(x, y, 5, 0, Math.PI * 2);
+        ctx.fill();
+      }
+
+      document.getElementById('save-button').addEventListener('click', () => {
+        const blob = new Blob([JSON.stringify(gazeData, null, 2)], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = 'gaze_data.json';
+        a.click();
+        URL.revokeObjectURL(url);
+        console.log('Gaze data saved!');
+      });
+
+      // ウィンドウサイズ変更時のキャンバスリサイズ
+      window.addEventListener('resize', () => {
+        const overlay = document.getElementById('overlay');
+        overlay.width = window.innerWidth;
+        overlay.height = window.innerHeight;
+      });
+    </script>
+  </body>
+</html>
