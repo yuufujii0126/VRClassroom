@@ -89,7 +89,7 @@ SECTIONS = [
      "非HMDモード（デスクトップ参加者）ではフロントカメラ映像を MediaPipe Face Landmarker (Tasks API, JavaScript) で解析し、52種のブレンドシェイプ係数を 30Hz で取得する。これらを Ekman の AU 体系に近似写像し、特に AU4 (browDownLeft/Right の重み付き和)、AU6 (cheekSquintLeft/Right)、AU7 (eyeSquintLeft/Right)、AU12 (mouthSmileLeft/Right) の時系列を保存する。実装ファイル mediapipe/ 配下に Face Landmarker のローダと AU 写像テーブルを置き、観察室クライアントから WebSocket 経由で送信する。サーバ側 observation-room.js プラグインは AU 時系列を被験者単位で集約し、CSV および SQLite の face_au テーブルに記録する。"),
     (2, "4.4 言語・対話解析", None),
     (0, None,
-     "生徒の発話は voice-chat.js (/voice-chat-io/) によって WebRTC P2P で交換される一方、観察者向けにはサーバへの混合ストリームも供給される。30 秒スライディングウィンドウごとに音声を切り出し、Whisper（ローカル）で文字起こしを得る。テキストは ollama-chat.js (/ollama-chat-io/) を介して、ローカル GPU サーバ (ssh rn-lab@202.240.109.53、Ollama: qwen3:latest または gemma3:12b)、または OpenAI API (gpt-5-nano) のいずれかに送られる。"),
+     "生徒の発話は voice-chat.js (/voice-chat-io/) によって WebRTC P2P で交換される一方、観察者向けにはサーバへの混合ストリームも供給される。30 秒スライディングウィンドウごとに音声を切り出し、Whisper（ローカル）で文字起こしを得る。テキストは ollama-chat.js (/ollama-chat-io/) を介して、ローカル GPU サーバ (Ollama: qwen3:latest または gemma3:12b)、または OpenAI API (gpt-5-nano) のいずれかに送られる。"),
     (0, None,
      "LLM への系統的プロンプトにより、各セグメントに対し以下のラベルを付与する：同意表現、不同意・反論、理解・確認応答、聞き返し・修復要求、不確実性 (hedge) の強度、スタンス変化、行動意図・コミットメント表明、質問・根拠要求。ラベルは JSON で返却され、CSV logs/llm-labels/ へ書き出される。LLM の応答品質はゴールドラベル付き 100 セグメントで定期検証する。"),
     (2, "4.5 音声プロソディ", None),

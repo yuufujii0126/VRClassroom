@@ -41,7 +41,7 @@ VR教室 `japanese_classroom.glb` を Three.js + WebXR Device API で描画し�
 | 対話 | 質問・根拠要求 | (−) | 同上 | [13] |
 | 音声 | F0・音量・発話速度・ポーズ長 | 不確実性／関与 | WebRTC PCM からの音響特徴抽出（実装中） | [14][15] |
 
-LLM 推論はローカル GPU サーバ（`ssh 202.240.109.53`、qwen3:latest／gemma3:12b）と OpenAI gpt-5-nano を切替可能にし、`/ollama-chat-io/` プラグイン経由でストリーミング応答する。すべての指標は CSV（`logs/`）および SQLite（`space/dimensio.db`）にエピソード／軌跡単位で記録する。`nod-fp-debug.html` で頭部運動のオフライン検証を行い、`nod_debug_*.json` を回帰テストに利用する。
+LLM 推論はローカル GPU サーバ（qwen3:latest／gemma3:12b）と OpenAI gpt-5-nano を切替可能にし、`/ollama-chat-io/` プラグイン経由でストリーミング応答する。すべての指標は CSV（`logs/`）および SQLite（`space/dimensio.db`）にエピソード／軌跡単位で記録する。`nod-fp-debug.html` で頭部運動のオフライン検証を行い、`nod_debug_*.json` を回帰テストに利用する。
 
 ## 4. 客観 × 主観の照合
 
