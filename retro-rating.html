@@ -1,0 +1,443 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>振り返り評定</title>
+  <style>
+    * { box-sizing: border-box; }
+    body { margin: 0; font-family: -apple-system, "Hiragino Sans", "Noto Sans JP", sans-serif; background: #f4f5f7; color: #222; }
+    main { max-width: 760px; margin: 32px auto; padding: 0 16px; }
+    .card { background: #fff; border-radius: 10px; padding: 24px 28px; box-shadow: 0 1px 4px rgba(0,0,0,0.08); margin-bottom: 16px; }
+    h1 { font-size: 20px; margin: 0 0 16px; }
+    h2 { font-size: 17px; margin: 0 0 12px; }
+    label.row { display: block; margin: 10px 0; }
+    select, input[type=text], textarea { font: inherit; padding: 6px 8px; border: 1px solid #bbb; border-radius: 6px; width: 100%; }
+    button { font: inherit; padding: 8px 16px; border-radius: 6px; border: none; background: #1976d2; color: #fff; cursor: pointer; }
+    button.secondary { background: #e0e0e0; color: #222; }
+    button:disabled { background: #bdbdbd; cursor: default; }
+    .hidden { display: none !important; }
+    .muted { color: #777; font-size: 13px; }
+    .error { color: #c62828; font-size: 13px; min-height: 18px; }
+    .seg-head { display: flex; justify-content: space-between; align-items: baseline; }
+    .progress { height: 8px; background: #e0e0e0; border-radius: 4px; overflow: hidden; margin: 12px 0; }
+    .progress > div { height: 100%; width: 0; background: #1976d2; }
+    .controls { display: flex; gap: 8px; flex-wrap: wrap; }
+    #transcript { margin-top: 16px; max-height: 260px; overflow-y: auto; font-size: 15px; line-height: 1.7; }
+    #transcript .line { padding: 2px 6px; border-radius: 4px; }
+    #transcript .line.current { background: #fff3cd; }
+    #transcript .who { display: inline-block; width: 4em; color: #777; font-size: 13px; }
+    .q { margin: 18px 0; }
+    .q-title { font-weight: bold; margin-bottom: 4px; }
+    .q-desc { font-size: 13px; color: #555; margin-bottom: 8px; }
+    .scale { display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px; text-align: center; }
+    .scale label { display: block; padding: 6px 0; border: 1px solid #ccc; border-radius: 6px; cursor: pointer; }
+    .scale input { display: none; }
+    .scale input:checked + span { font-weight: bold; }
+    .scale label:has(input:checked) { background: #1976d2; color: #fff; border-color: #1976d2; }
+    .anchors { display: flex; justify-content: space-between; font-size: 12px; color: #777; margin-top: 2px; }
+    .note { background: #e3f2fd; border-radius: 6px; padding: 10px 14px; font-size: 14px; }
+  </style>
+</head>
+<body>
+<main>
+  <!-- 実験者が設定する画面 -->
+  <section id="setup" class="card">
+    <h1>振り返り評定（実験者設定）</h1>
+    <label class="row">セッション
+      <select id="session-select"><option value="">読み込み中...</option></select>
+    </label>
+    <div id="session-info" class="muted"></div>
+    <label class="row">参加者ID（英数字・_・-）
+      <input type="text" id="pid-input" maxlength="32" placeholder="例: P01">
+    </label>
+    <label class="row"><input type="checkbox" id="opt-student-audio" checked> 学習者本人の音声も流す（対話の文脈を思い出すため）</label>
+    <label class="row"><input type="checkbox" id="opt-transcript" checked> 文字起こしを表示する（聞き終えた部分のみ）</label>
+    <div class="error" id="setup-error"></div>
+    <button id="setup-start">参加者に渡す</button>
+  </section>
+
+  <!-- 参加者向け説明 -->
+  <section id="intro" class="card hidden">
+    <h1>振り返り評定のお願い</h1>
+    <p>先ほどの授業を、いくつかの区間に分けて順番に再生します。各区間を聞き終えると自動で止まるので、質問に答えてください。</p>
+    <div class="note">
+      <b>「今どう思うか」ではなく、「授業のその場面で、当時どう感じていたか」</b>を思い出して答えてください。<br>
+      正解・不正解はありません。思い出せないときは「思い出せない」にチェックしてください。
+    </div>
+    <p>再生中に「ここで気持ちが動いた」と思った瞬間があれば、そのときにボタンを押してください（何度でも押せます）。</p>
+    <p class="muted" id="intro-count"></p>
+    <button id="intro-start">はじめる</button>
+  </section>
+
+  <!-- 再生 -->
+  <section id="player" class="card hidden">
+    <div class="seg-head">
+      <h2 id="player-title">区間 1</h2>
+      <span class="muted" id="player-time">0:00 / 0:00</span>
+    </div>
+    <div class="progress"><div id="player-bar"></div></div>
+    <div class="controls">
+      <button id="btn-pause">一時停止</button>
+      <button id="btn-back" class="secondary">5秒戻る</button>
+      <button id="btn-moment" class="secondary">ここで気持ちが動いた</button>
+      <span class="muted" id="moment-feedback"></span>
+    </div>
+    <div class="error" id="player-error"></div>
+    <div id="transcript"></div>
+  </section>
+
+  <!-- 区間ごとの評定 -->
+  <section id="rating" class="card hidden">
+    <h2 id="rating-title">区間 1 について</h2>
+    <p class="muted">この区間を聞いていたとき、当時どう感じていたかを答えてください。</p>
+    <div id="questions"></div>
+    <label class="row"><input type="checkbox" id="cannot-recall"> この区間のことは、当時の気持ちを思い出せない</label>
+    <label class="row">気づいたこと（任意）
+      <textarea id="rating-comment" rows="2"></textarea>
+    </label>
+    <div class="error" id="rating-error"></div>
+    <div class="controls">
+      <button id="btn-replay" class="secondary">この区間をもう一度聞く</button>
+      <button id="btn-submit" disabled>回答して次へ</button>
+    </div>
+  </section>
+
+  <section id="done" class="card hidden">
+    <h1>ご協力ありがとうございました</h1>
+    <p>すべての区間の回答が保存されました。実験者に声をかけてください。</p>
+    <p class="muted" id="done-file"></p>
+  </section>
+</main>
+
+<script>
+  // 4観点の質問。定義は論文 §3.1（理解・同意・受容・コミット）に対応
+  const QUESTIONS = [
+    { key: 'understanding', title: '理解', text: 'この区間の説明の内容を理解できていた', desc: '話の中身が分かったかどうか' },
+    { key: 'agreement', title: '同意', text: 'この区間の説明の内容は正しい・妥当だと思っていた', desc: '分かったうえで、その内容に賛成できたかどうか' },
+    { key: 'acceptance', title: '受容', text: 'この区間の内容を、自分の考えとして受け入れていた', desc: 'それまでの考えが変わった・深まったかどうか' },
+    { key: 'commitment', title: 'コミット', text: 'この区間の内容を、今後の学習や行動に活かそうと思っていた', desc: '実際に使ってみよう・やってみようと思ったかどうか' },
+  ];
+  const SCALE = [1, 2, 3, 4, 5, 6, 7];
+  const BACK_STEP_SEC = 5;
+  const RESYNC_THRESHOLD_SEC = 0.25;   // 音声と時計のずれがこれを超えたら位置を合わせ直す
+  const API = '/api/observation';
+
+  const $ = (id) => document.getElementById(id);
+  const show = (id) => {
+    for (const s of ['setup', 'intro', 'player', 'rating', 'done']) $(s).classList.toggle('hidden', s !== id);
+  };
+  const fmt = (sec) => {
+    const s = Math.max(0, Math.floor(sec));
+    return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
+  };
+
+  let sessions = [];
+  let state = null;   // { session, pid, condition, segIdx, ratings[], moments[], replays, startedAt, lines[], tracks[] }
+
+  // ========== 設定画面 ==========
+  async function loadSessions() {
+    const sel = $('session-select');
+    try {
+      const r = await fetch(`${API}/sessions`);
+      if (!r.ok) throw new Error(`HTTP ${r.status}`);
+      sessions = (await r.json()).sessions || [];
+    } catch (e) {
+      sel.innerHTML = '<option value="">読み込み失敗</option>';
+      $('setup-error').textContent = 'セッション一覧を取得できませんでした: ' + e.message;
+      return;
+    }
+    if (sessions.length === 0) {
+      sel.innerHTML = '<option value="">区間マーカー付きの録画がありません</option>';
+      return;
+    }
+    sel.innerHTML = sessions.map((s, i) => {
+      const when = new Date(s.startMs).toLocaleString('ja-JP');
+      const who = s.participants.student || '(学習者不明)';
+      return `<option value="${i}">${when} / ${escapeHtml(who)} / ${s.segments.length}区間 / ${fmt(s.duration / 1000)}</option>`;
+    }).join('');
+    const params = new URLSearchParams(location.search);
+    const wanted = sessions.findIndex(s => String(s.startMs) === params.get('session'));
+    if (wanted >= 0) sel.value = String(wanted);
+    if (params.get('pid')) $('pid-input').value = params.get('pid');
+    if (params.get('studentAudio') === '0') $('opt-student-audio').checked = false;
+    if (params.get('transcript') === '0') $('opt-transcript').checked = false;
+    renderSessionInfo();
+  }
+
+  function renderSessionInfo() {
+    const s = sessions[Number($('session-select').value)];
+    if (!s) { $('session-info').textContent = ''; return; }
+    const audio = ['lecturer', 'student'].map(role => {
+      const a = s.audio[role];
+      const name = role === 'lecturer' ? '講師' : '学習者';
+      if (!a) return `${name}音声なし`;
+      return `${name}音声あり${a.timingCorrected ? `（補正 ${a.offsetMs}ms）` : '（時刻補正なし）'}`;
+    }).join(' / ');
+    const labeled = s.labeledBy.length ? ` / 評定済み: ${s.labeledBy.map(escapeHtml).join(', ')}` : '';
+    $('session-info').innerHTML = `${audio} / 文字起こし${s.hasTranscript ? 'あり' : 'なし'}${labeled}`;
+  }
+
+  async function onSetupStart() {
+    const err = $('setup-error');
+    err.textContent = '';
+    const session = sessions[Number($('session-select').value)];
+    const pid = $('pid-input').value.trim();
+    if (!session) { err.textContent = 'セッションを選んでください'; return; }
+    if (!/^[A-Za-z0-9_-]{1,32}$/.test(pid)) { err.textContent = '参加者IDは英数字・_・- の32文字以内で入力してください'; return; }
+    if (!session.audio.lecturer) { err.textContent = 'このセッションには講師の音声がありません'; return; }
+    if (session.labeledBy.includes(pid) && !confirm(`${pid} の評定は既に保存されています。最初からやり直して上書きしますか？`)) return;
+
+    const condition = { studentAudio: $('opt-student-audio').checked, showTranscript: $('opt-transcript').checked };
+    $('setup-start').disabled = true;
+    try {
+      const [tracks, lines] = await Promise.all([prepareAudio(session, condition), loadTranscript(session, condition)]);
+      state = {
+        session, pid, condition, tracks, lines,
+        segIdx: 0, ratings: [], moments: [], replays: 0,
+        startedAt: new Date().toISOString(),
+      };
+    } catch (e) {
+      err.textContent = '準備に失敗しました: ' + e.message;
+      $('setup-start').disabled = false;
+      return;
+    }
+    $('intro-count').textContent = `全部で ${session.segments.length} 区間、約 ${Math.ceil(session.duration / 60000)} 分です。`;
+    show('intro');
+  }
+
+  function prepareAudio(session, condition) {
+    const roles = condition.studentAudio ? ['lecturer', 'student'] : ['lecturer'];
+    return Promise.all(roles.filter(r => session.audio[r]).map(role => new Promise((resolve, reject) => {
+      const el = new Audio();
+      el.preload = 'auto';
+      const timer = setTimeout(() => reject(new Error(`${role} 音声の読み込みがタイムアウトしました`)), 15000);
+      el.addEventListener('loadedmetadata', () => { clearTimeout(timer); resolve({ role, el, offsetSec: session.audio[role].offsetMs / 1000 }); }, { once: true });
+      el.addEventListener('error', () => { clearTimeout(timer); reject(new Error(`${role} 音声を読み込めません`)); }, { once: true });
+      el.src = session.audio[role].url;
+    })));
+  }
+
+  // 文字起こしの時刻は録画開始基準（transcribe.py で補正済み）
+  async function loadTranscript(session, condition) {
+    if (!condition.showTranscript || !session.hasTranscript) return [];
+    const r = await fetch(`${API}/transcript/${session.startMs}`);
+    if (!r.ok) return [];
+    const data = await r.json();
+    if (!data.tracks) return [];
+    const roles = condition.studentAudio ? ['lecturer', 'student'] : ['lecturer'];
+    return roles.flatMap(role => ((data.tracks[role] || {}).segments || [])
+      .map(seg => ({ role, start: seg.start, end: seg.end, text: seg.text })))
+      .sort((a, b) => a.start - b.start);
+  }
+
+  // ========== 再生（録画開始からの経過秒 T を基準に、各ロールの音声を合わせる） ==========
+  const clock = { running: false, baseT: 0, basePerf: 0 };
+  let rafId = null;
+
+  function nowT() {
+    return clock.running ? clock.baseT + (performance.now() - clock.basePerf) / 1000 : clock.baseT;
+  }
+  function setClock(t, running) {
+    clock.baseT = t;
+    clock.basePerf = performance.now();
+    clock.running = running;
+  }
+  function currentSegment() { return state.session.segments[state.segIdx]; }
+
+  function startSegment() {
+    const seg = currentSegment();
+    $('player-title').textContent = `区間 ${seg.index} / ${state.session.segments.length}`;
+    $('player-error').textContent = '';
+    $('moment-feedback').textContent = '';
+    $('btn-pause').textContent = '一時停止';
+    $('transcript').classList.toggle('hidden', !state.condition.showTranscript);
+    show('player');
+    setClock(seg.startOffsetMs / 1000, true);
+    syncAudio(true);
+    loop();
+  }
+
+  function syncAudio(force) {
+    const t = nowT();
+    for (const tr of state.tracks) {
+      const pos = t - tr.offsetSec;
+      const inRange = pos >= 0 && pos < tr.el.duration;
+      if (!clock.running || !inRange) {
+        if (!tr.el.paused) tr.el.pause();
+        continue;
+      }
+      if (force || Math.abs(tr.el.currentTime - pos) > RESYNC_THRESHOLD_SEC) tr.el.currentTime = pos;
+      if (tr.el.paused) {
+        tr.el.play().catch(e => { $('player-error').textContent = '音声を再生できません: ' + e.message; });
+      }
+    }
+  }
+
+  function loop() {
+    cancelAnimationFrame(rafId);
+    const seg = currentSegment();
+    const startSec = seg.startOffsetMs / 1000;
+    const endSec = seg.endOffsetMs / 1000;
+    const t = Math.min(nowT(), endSec);
+    $('player-time').textContent = `${fmt(t - startSec)} / ${fmt(endSec - startSec)}`;
+    $('player-bar').style.width = `${((t - startSec) / Math.max(0.001, endSec - startSec)) * 100}%`;
+    renderTranscript(startSec, t);
+    if (t >= endSec) {
+      setClock(endSec, false);
+      syncAudio(false);
+      openRating();
+      return;
+    }
+    syncAudio(false);
+    rafId = requestAnimationFrame(loop);
+  }
+
+  // 区間内で聞き終えた発話だけを出す（先読みで答えが変わらないように）
+  let lastTranscriptKey = '';
+  function renderTranscript(startSec, t) {
+    if (!state.condition.showTranscript) return;
+    const visible = state.lines.filter(l => l.end > startSec && l.start <= t);
+    const key = visible.length + ':' + visible.findIndex(l => l.end > t);
+    if (key === lastTranscriptKey) return;
+    lastTranscriptKey = key;
+    const box = $('transcript');
+    box.innerHTML = visible.map(l => {
+      const who = l.role === 'lecturer' ? '講師' : 'あなた';
+      return `<div class="line${l.end > t ? ' current' : ''}"><span class="who">${who}</span>${escapeHtml(l.text)}</div>`;
+    }).join('');
+    box.scrollTop = box.scrollHeight;
+  }
+
+  function togglePause() {
+    const t = nowT();
+    setClock(t, !clock.running);
+    $('btn-pause').textContent = clock.running ? '一時停止' : '再開';
+    syncAudio(true);
+  }
+
+  function stepBack() {
+    const startSec = currentSegment().startOffsetMs / 1000;
+    setClock(Math.max(startSec, nowT() - BACK_STEP_SEC), clock.running);
+    lastTranscriptKey = '';
+    syncAudio(true);
+  }
+
+  function markMoment() {
+    const t = nowT();
+    state.moments.push({ sessionTimeMs: Math.round(t * 1000), segment: currentSegment().index });
+    $('moment-feedback').textContent = `記録しました（${fmt(t - currentSegment().startOffsetMs / 1000)}）`;
+  }
+
+  // ========== 評定 ==========
+  function openRating() {
+    const seg = currentSegment();
+    $('rating-title').textContent = `区間 ${seg.index} について`;
+    $('rating-error').textContent = '';
+    $('cannot-recall').checked = false;
+    $('rating-comment').value = '';
+    $('questions').innerHTML = QUESTIONS.map(q => `
+      <div class="q">
+        <div class="q-title">${q.title}：${q.text}</div>
+        <div class="q-desc">${q.desc}</div>
+        <div class="scale">${SCALE.map(v => `
+          <label><input type="radio" name="q-${q.key}" value="${v}"><span>${v}</span></label>`).join('')}
+        </div>
+        <div class="anchors"><span>1 まったくそう思わない</span><span>4 どちらでもない</span><span>7 とてもそう思う</span></div>
+      </div>`).join('');
+    updateSubmitEnabled();
+    show('rating');
+    window.scrollTo(0, 0);
+  }
+
+  function collectScores() {
+    const scores = {};
+    for (const q of QUESTIONS) {
+      const checked = document.querySelector(`input[name="q-${q.key}"]:checked`);
+      scores[q.key] = checked ? Number(checked.value) : null;
+    }
+    return scores;
+  }
+
+  // 思い出せない区間は未回答の項目があってもよい
+  function updateSubmitEnabled() {
+    const scores = collectScores();
+    const complete = QUESTIONS.every(q => scores[q.key] !== null);
+    $('btn-submit').disabled = !(complete || $('cannot-recall').checked);
+  }
+
+  function replaySegment() {
+    state.replays += 1;
+    startSegment();
+  }
+
+  async function submitRating() {
+    const seg = currentSegment();
+    const rating = {
+      segment: seg.index,
+      scores: collectScores(),
+      cannotRecall: $('cannot-recall').checked,
+      replays: state.replays,
+      comment: $('rating-comment').value.trim(),
+      answeredAt: new Date().toISOString(),
+    };
+    const ratings = [...state.ratings.filter(r => r.segment !== seg.index), rating];
+    const isLast = state.segIdx === state.session.segments.length - 1;
+    $('btn-submit').disabled = true;
+    try {
+      const saved = await saveLabels(ratings, isLast);
+      state = { ...state, ratings, segIdx: state.segIdx + 1, replays: 0 };
+      if (isLast) {
+        $('done-file').textContent = `保存先: labels/${saved.file}`;
+        show('done');
+      } else {
+        startSegment();
+      }
+    } catch (e) {
+      $('rating-error').textContent = '保存に失敗しました。もう一度「回答して次へ」を押してください（' + e.message + '）';
+      $('btn-submit').disabled = false;
+    }
+  }
+
+  // 毎区間、全回答を送って上書き保存。サーバに届かなくても失わないよう localStorage にも残す
+  async function saveLabels(ratings, completed) {
+    const body = {
+      condition: state.condition,
+      startedAt: state.startedAt,
+      completed,
+      ratings,
+      moments: state.moments,
+    };
+    const key = `retro-rating:${state.session.startMs}:${state.pid}`;
+    try { localStorage.setItem(key, JSON.stringify(body)); } catch (e) { /* 容量超過などは無視してサーバ保存を優先 */ }
+    const r = await fetch(`${API}/labels/${state.session.startMs}/${encodeURIComponent(state.pid)}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+    const res = await r.json().catch(() => ({}));
+    if (!r.ok || !res.ok) throw new Error(res.error || `HTTP ${r.status}`);
+    return res;
+  }
+
+  function escapeHtml(s) {
+    return String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  }
+
+  // ========== 初期化 ==========
+  $('session-select').addEventListener('change', renderSessionInfo);
+  $('setup-start').addEventListener('click', onSetupStart);
+  $('intro-start').addEventListener('click', startSegment);
+  $('btn-pause').addEventListener('click', togglePause);
+  $('btn-back').addEventListener('click', stepBack);
+  $('btn-moment').addEventListener('click', markMoment);
+  $('btn-replay').addEventListener('click', replaySegment);
+  $('btn-submit').addEventListener('click', submitRating);
+  $('rating').addEventListener('change', updateSubmitEnabled);
+  window.addEventListener('beforeunload', (e) => {
+    if (state && state.segIdx < state.session.segments.length) { e.preventDefault(); e.returnValue = ''; }
+  });
+  loadSessions();
+</script>
+</body>
+</html>

@@ -334,6 +334,11 @@
         <button id="lec-rec-start" onclick="startRecording()" style="flex:1;padding:4px 8px;background:#ef5350;color:#fff;border:none;border-radius:4px;cursor:pointer;font-size:12px">Start</button>
         <button id="lec-rec-stop" onclick="stopRecording()" disabled style="flex:1;padding:4px 8px;background:#666;color:#fff;border:none;border-radius:4px;cursor:pointer;font-size:12px">Stop</button>
       </div>
+      <div style="display:flex;align-items:center;gap:6px;margin-top:6px">
+        <span>区間 <span id="lec-seg-label" style="font-family:monospace;font-weight:bold">-</span></span>
+        <button id="lec-seg-next" onclick="markSegment(false)" disabled title="キー N" style="flex:1;padding:4px 8px;background:#42a5f5;color:#fff;border:none;border-radius:4px;cursor:pointer;font-size:12px">次の区間 ▶ (N)</button>
+        <button id="lec-seg-undo" onclick="markSegment(true)" disabled title="直前のマークを取り消す" style="padding:4px 8px;background:#666;color:#fff;border:none;border-radius:4px;cursor:pointer;font-size:12px">取消</button>
+      </div>
       <div id="lec-rec-result" style="font-size:11px;color:#81c784;margin-top:4px;min-height:14px"></div>
     </div>
 
@@ -1120,7 +1125,9 @@
         for (const [emotion, score] of Object.entries(emotions)) {
           if (score > maxScore) { maxScore = score; maxEmotion = emotion; }
         }
-        return { emotion: maxEmotion, scores: { smile: smileScore.toFixed(2), surprise: surpriseScore.toFixed(2), sad: sadScore.toFixed(2), angry: angryScore.toFixed(2), confused: confusedScore.toFixed(2) }, debug: { smileRatio: smileRatio.toFixed(3), openRatio: openRatio.toFixed(3), browRatio: browRatio.toFixed(3), eyeOpen: eyeOpenRatio.toFixed(3) } };
+        // scores は数値で返す（サーバの推定器は数値以外を欠損扱いにする）
+        const round2 = (v) => Math.round(v * 100) / 100;
+        return { emotion: maxEmotion, scores: { smile: round2(smileScore), surprise: round2(surpriseScore), sad: round2(sadScore), angry: round2(angryScore), confused: round2(confusedScore) }, debug: { smileRatio: smileRatio.toFixed(3), openRatio: openRatio.toFixed(3), browRatio: browRatio.toFixed(3), eyeOpen: eyeOpenRatio.toFixed(3) } };
       }
 
       // ========== Calibration State ==========
@@ -1443,10 +1450,14 @@
         const proto = location.protocol === 'https:' ? 'wss' : 'ws';
         socket = io({ path: '/webxr/observation-room-io/', transports: ['polling'] });
 
-        socket.on('connect', () => { console.log('[ObsRoom] Connected:', socket.id); });
+        socket.on('connect', () => {
+          console.log('[ObsRoom] Connected:', socket.id);
+          syncServerClock();
+        });
 
         socket.on('room-state', (state) => {
           updateLobbyState(state);
+          if (myRole === 'lecturer') updateSegmentUi(state.segment);
           updateParticipantsHud(state);
           updateAvatars(state);
           // Clean up WebRTC connections for participants who left
@@ -1487,6 +1498,7 @@
         });
 
         socket.on('speech-state', ({ role, speaking }) => {
+          if (role === 'lecturer' && speaking) pauseTracker.onLecturerSpeechStart();
           if (myRole === 'observer') {
             const el = document.getElementById('obs-speech-' + role);
             if (el) {
@@ -1506,8 +1518,16 @@
           } else if (myRole === 'lecturer') {
             document.getElementById('lec-rec-start').disabled = rec;
             document.getElementById('lec-rec-stop').disabled = !rec;
+            updateSegmentUi(rec ? 1 : null);
             if (rec) startRecTimer(st);
             else stopRecTimer();
+          }
+          // サーバ時計との差は往復時間から測り直す。間に合わない・失敗したときは録画開始通知の受信時刻で代用
+          // （その場合の誤差は片道遅延ぶん。polling 転送なので数百 ms になりうる）
+          if (rec) {
+            recordingStartRecvAt = Date.now();
+            if (clockSyncRttMs === null) serverClockOffsetMs = st - recordingStartRecvAt;
+            syncServerClock();
           }
           // Audio capture for transcription (lecturer and student only)
           if (myRole === 'lecturer' || myRole === 'student') {
@@ -1515,15 +1535,24 @@
               currentSessionTimestamp = st;
               startAudioCapture();
             } else {
-              const samples = stopAudioCapture();
-              if (samples && samples.length > 0 && currentSessionTimestamp) {
+              const captured = stopAudioCapture();
+              if (captured && captured.length > 0 && currentSessionTimestamp) {
                 const sampleRate = vadAudioCtx ? vadAudioCtx.sampleRate : 44100;
-                const wavBuffer = encodeWAV(samples, sampleRate);
-                uploadAudioForTranscription(wavBuffer, currentSessionTimestamp);
+                // Whisper API の 25MB 上限対策で 16kHz に落とす（48kHz のままだと約4分で超える）
+                const resampled = downsampleBuffer(captured, sampleRate, UPLOAD_SAMPLE_RATE);
+                const wavBuffer = encodeWAV(resampled, Math.min(sampleRate, UPLOAD_SAMPLE_RATE));
+                // WAV の 0 秒のサーバ時刻。録画開始とのずれはサーバ側（transcribe.py）でロールごとに補正する
+                const captureStartServerMs = captureFirstFrameAt !== null && serverClockOffsetMs !== null
+                  ? Math.round(captureFirstFrameAt + serverClockOffsetMs) : null;
+                uploadAudioForTranscription(wavBuffer, currentSessionTimestamp, captureStartServerMs);
               }
               currentSessionTimestamp = null;
             }
           }
+        });
+
+        socket.on('segment-state', ({ segment }) => {
+          if (myRole === 'lecturer') updateSegmentUi(segment);
         });
 
         socket.on('recording-saved', ({ ok, filename, count }) => {
@@ -1950,6 +1979,8 @@
           eyeWandering: eyeWandering,
           eyeWanderingCount: eyeWanderingCount,
           timestamp: now,
+          serverClockOffsetMs,       // timestamp + これ ≒ サーバ時刻（往復時間から推定。clockSyncRttMs/2 が誤差の上限）
+          clockSyncRttMs,
         };
       }
 
@@ -2396,6 +2427,36 @@
       let pcmRecorderNode = null;
       let pcmSamples = [];
       let currentSessionTimestamp = null;
+      // 時刻合わせ（いずれも自分の時計の Date.now()）
+      let recordingStartRecvAt = null;   // 録画開始通知を受け取った時刻
+      let captureFirstFrameAt = null;    // 録音の最初のサンプルの時刻
+      let serverClockOffsetMs = null;    // サーバ時計 − 自分の時計（推定）
+      let clockSyncRttMs = null;         // 推定に使った往復時間。null = 時計合わせ未完了
+      const CLOCK_SYNC_SAMPLES = 5;
+      const CLOCK_SYNC_TIMEOUT_MS = 3000;
+
+      // NTP と同じ考え方: 往復の中間時刻にサーバが Date.now() を読んだとみなす。
+      // 往復時間が最小のサンプルを採用（誤差は最大で RTT/2）
+      async function syncServerClock() {
+        if (!socket) return;
+        let best = null;
+        for (let i = 0; i < CLOCK_SYNC_SAMPLES; i++) {
+          const t0 = Date.now();
+          try {
+            const serverNow = await socket.timeout(CLOCK_SYNC_TIMEOUT_MS).emitWithAck('clock-sync', null);
+            const t1 = Date.now();
+            if (typeof serverNow !== 'number') continue;
+            const rtt = t1 - t0;
+            if (!best || rtt < best.rtt) best = { rtt, offset: serverNow - (t0 + t1) / 2 };
+          } catch (e) {
+            console.warn('[ObsRoom] clock-sync timeout/error:', e);
+          }
+        }
+        if (!best) return;
+        serverClockOffsetMs = best.offset;
+        clockSyncRttMs = best.rtt;
+        console.log(`[ObsRoom] Clock sync: offset=${best.offset.toFixed(0)}ms rtt=${best.rtt}ms`);
+      }
 
       function getBasePath() {
         const idx = location.pathname.indexOf('/fujii/');
@@ -2416,6 +2477,7 @@
           stopAudioCapture();
         }
         pcmSamples = [];
+        captureFirstFrameAt = null;
         audioRecordingActive = true;
 
         // AudioContext が autoplay policy で suspended の場合は resume
@@ -2436,8 +2498,9 @@
           const input = e.inputBuffer.getChannelData(0);
           pcmSamples.push(new Float32Array(input));
           frameCount++;
-          // 最初の callback で動作確認ログ
+          // 最初の callback で動作確認ログ。バッファ先頭の時刻＝今 − バッファ長
           if (frameCount === 1) {
+            captureFirstFrameAt = Date.now() - (input.length / vadAudioCtx.sampleRate) * 1000;
             console.log('[ObsRoom] First PCM frame captured (len=' + input.length + ')');
           }
         };
@@ -2475,6 +2538,24 @@
           console.error('[ObsRoom] No audio captured! WAV upload will be skipped. Check mic permission and AudioContext state.');
         }
         return merged;
+      }
+
+      const UPLOAD_SAMPLE_RATE = 16000;
+
+      // 区間平均による間引き（簡易ローパスを兼ねる）。入力が目標以下ならそのまま返す
+      function downsampleBuffer(samples, fromRate, toRate) {
+        if (toRate >= fromRate) return samples;
+        const ratio = fromRate / toRate;
+        const outLen = Math.floor(samples.length / ratio);
+        const out = new Float32Array(outLen);
+        for (let i = 0; i < outLen; i++) {
+          const start = Math.floor(i * ratio);
+          const end = Math.min(samples.length, Math.floor((i + 1) * ratio));
+          let sum = 0;
+          for (let j = start; j < end; j++) sum += samples[j];
+          out[i] = end > start ? sum / (end - start) : 0;
+        }
+        return out;
       }
 
       function encodeWAV(samples, sampleRate) {
@@ -2532,7 +2613,7 @@
         }
       }
 
-      async function uploadAudioForTranscription(wavBuffer, sessionTimestamp) {
+      async function uploadAudioForTranscription(wavBuffer, sessionTimestamp, captureStartServerMs) {
         const sizeKB = Math.round(wavBuffer.byteLength / 1024);
         const uploadId = `${sessionTimestamp}-${myRole}`;
         inflightUploads.add(uploadId);
@@ -2542,6 +2623,10 @@
           const blob = new Blob([wavBuffer], { type: 'audio/wav' });
           const formData = new FormData();
           formData.append('audio', blob, `${myRole}.wav`);
+          if (captureStartServerMs !== null) {
+            formData.append('captureStartServerMs', String(captureStartServerMs));
+            if (clockSyncRttMs !== null) formData.append('clockSyncRttMs', String(clockSyncRttMs));
+          }
 
           const url = `${base}/api/observation/audio/${sessionTimestamp}`;
           console.log(`[ObsRoom] Uploading audio (${blob.size} bytes) → ${url}`);
@@ -2680,6 +2765,37 @@
       let prosodyUtteranceFrames = [];         // frames within current utterance (for ending elongation)
       let prosodyLastEndingMs = 0;             // last computed ending elongation, attached to next emit
 
+      // ポーズ長: 学習者の発話ターン内の無音（Goldman-Eisler の「迷いのポーズ」）。
+      // 学習者が声を出した時点でターン開始、講師が話し始めたらターン終了。
+      // 聞いている間の沈黙は数えない。集計窓（1秒）をまたいで計測するので 1.5s/2.5s の閾値に届く。
+      function createPauseTracker(rmsGate) {
+        let inTurn = false;
+        let silenceStart = null;
+        let windowMax = 0;
+        return {
+          onFrame(t, rms) {
+            if (rms >= rmsGate) {
+              inTurn = true;
+              silenceStart = null;
+              return;
+            }
+            if (!inTurn) return;
+            if (silenceStart === null) silenceStart = t;
+            windowMax = Math.max(windowMax, t - silenceStart);
+          },
+          onLecturerSpeechStart() {
+            inTurn = false;
+            silenceStart = null;
+          },
+          takeWindowMax() {
+            const v = windowMax;
+            windowMax = 0;
+            return v;
+          },
+        };
+      }
+      let pauseTracker = createPauseTracker(PROSODY_RMS_GATE);
+
       async function initVAD(deviceId) {
         try {
           const audioConstraints = deviceId ? { deviceId: { exact: deviceId } } : true;
@@ -2732,6 +2848,7 @@
                 : null;
               const tNow = performance.now();
               prosodyFrameLog.push({ t: tNow, pitchHz, rms });
+              pauseTracker.onFrame(tNow, rms);
               if (vadSpeaking) prosodyUtteranceFrames.push({ t: tNow, pitchHz, rms });
 
               // 1秒経過したら集計・送信
@@ -2755,6 +2872,7 @@
         vadSpeaking = false;
         prosodyFrameLog = [];
         prosodyUtteranceFrames = [];
+        pauseTracker = createPauseTracker(PROSODY_RMS_GATE);
       }
 
       // ========== Prosody helpers ==========
@@ -2837,16 +2955,8 @@
           }
         }
         const speechRateProxy = peaks / (PROSODY_AGG_MS / 1000);  // peaks per second
-        // Pause: contiguous frames below RMS_GATE
-        let maxPauseMs = 0, curPauseStart = null;
-        for (const f of frames) {
-          if (f.rms < PROSODY_RMS_GATE) {
-            if (curPauseStart === null) curPauseStart = f.t;
-            maxPauseMs = Math.max(maxPauseMs, f.t - curPauseStart);
-          } else {
-            curPauseStart = null;
-          }
-        }
+        // Pause: 学習者ターン内の無音長（窓をまたいで計測、createPauseTracker 参照）
+        const maxPauseMs = pauseTracker.takeWindowMax();
 
         const payload = {
           pitchHzMean, pitchHzStd, intensityRms,
@@ -2875,6 +2985,36 @@
       function stopRecording() {
         if (socket) socket.emit('stop-recording');
       }
+      // 区間マーカー：振り返り評定で区間ごとに正解ラベルを取るための区切り（録画開始で区間1）
+      function markSegment(undo) {
+        if (!socket || myRole !== 'lecturer') return;
+        socket.emit('segment:mark', { undo }, (res) => {
+          const el = document.getElementById('lec-rec-result');
+          if (!res || !res.ok) {
+            if (el) { el.textContent = '区間マーク失敗: ' + (res ? res.reason : 'no response'); el.style.color = '#ef5350'; }
+            return;
+          }
+          if (el) { el.textContent = undo ? `取消 → 区間 ${res.segment}` : `区間 ${res.segment} 開始`; el.style.color = '#81c784'; }
+        });
+      }
+      function updateSegmentUi(segment) {
+        const label = document.getElementById('lec-seg-label');
+        const next = document.getElementById('lec-seg-next');
+        const undo = document.getElementById('lec-seg-undo');
+        if (!label || !next || !undo) return;
+        const active = segment !== null && segment !== undefined;
+        label.textContent = active ? String(segment) : '-';
+        next.disabled = !active;
+        undo.disabled = !active || segment <= 1;
+      }
+      window.addEventListener('keydown', (e) => {
+        if (myRole !== 'lecturer' || e.repeat || e.ctrlKey || e.metaKey || e.altKey) return;
+        const tag = (e.target && e.target.tagName) || '';
+        if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
+        if (e.key === 'n' || e.key === 'N') {
+          if (!document.getElementById('lec-seg-next').disabled) markSegment(false);
+        }
+      });
       function setTimerText(text) {
         const obs = document.getElementById('rec-timer');
         const lec = document.getElementById('lec-rec-timer');
