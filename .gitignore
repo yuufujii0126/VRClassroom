@@ -26,3 +26,6 @@ DICOMO2026_format_LaTeX/*.dvi
 
 # OS
 .DS_Store
+
+# ゴミ箱
+trash/

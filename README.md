@@ -1,39 +1,107 @@
-# VRClassroom
+# 🏫 VRClassroom
 
 **VR教室における学習者の納得度推定のための非言語行動分析システム**
 
-WebXR 上に VR 教室と観察室を実装し、講師・学習者の頭部姿勢・音声・対話を同期収集して、学習者の「納得度」を推定するための研究リポジトリです。
+---
 
-- 藤井 優羽, 中村 亮太（武蔵野大学 データサイエンス学部）
-- 発表：「VR教室における学習者の納得度推定のための非言語行動分析システムの設計と予備的検討」, DICOMO2026
+## 📌 概要
 
-## 概要
+このプロジェクトは、**VR教室で授業を受ける学習者の「納得度」を推定する**ための研究用システムです。
 
-納得度を **理解・同意・受容・コミットメント** の4観点に分解し、21 の観測指標と対応づけます。各指標を重み付き和で統合した「統合納得度」を定義しています。
+WebXR 上に VR 教室と観察室を実装し、講師・学習者の頭部姿勢・音声・対話を同期して収集します。
 
-特徴は次の3系統から抽出し、共通の時刻軸で統合・可視化します。
+- 納得度を **理解・同意・受容・コミットメント** の4観点に分解
+- 4観点を 21 の観測指標に対応づけ、重み付き和で **統合納得度** を算出
+- 特徴は次の3系統から抽出し、共通の時刻軸で統合・可視化
 
 | 系統 | 主な指標 |
 |---|---|
-| 言語 | 同意・理解確認・hedge など9指標（ModernBERT / LLM） |
-| 音声 | F0・RMS・発話速度・ポーズ長 |
-| 視覚 | 頷き・首振り検出、視線、表情 |
+| 💬 言語 | 同意・理解確認・hedge など9指標（ModernBERT / LLM） |
+| 🎤 音声 | F0・RMS・発話速度・ポーズ長 |
+| 👀 視覚 | 頷き・首振り検出、視線、表情 |
 
-## 主な結果（予備評価）
+📝 発表：「VR教室における学習者の納得度推定のための非言語行動分析システムの設計と予備的検討」, DICOMO2026
+
+### 📊 予備評価の結果
 
 | 検出器 | 結果 |
 |---|---|
 | 頷き検出 | micro F1 = 0.95（P 0.95 / R 0.95、許容誤差 0.5 秒） |
 | 表情分類（face-api.js） | Accuracy 0.694 / macro F1 0.543 / κ 0.50（608 フレーム） |
 
-表情分類では angry の Recall が 0.17 と低く、多くが neutral に誤判定されました。欧米顔で学習されたモデルの影響とみて、現状はベースラインとして扱っています。
+- 表情分類では angry の Recall が 0.17 と低く、多くが neutral に誤判定された
+- 欧米顔で学習されたモデルの影響とみて、現状はベースラインとして扱っている
 
-## ディレクトリ構成
+---
+
+## 🚀 使い方
+
+### 1. リポジトリを取得
+
+```bash
+git clone https://github.com/yuufujii0126/VRClassroom.git
+```
+
+### 2. VR教室・観察室を開く
+
+研究室の WebXR Content Server の `public/fujii/` に配置して使います。
+
+- 観察室の同期には、サーバ側の Socket.IO プラグイン `observation-room.js`（パス `/webxr/observation-room-io/`）が必要です
+- A-Frame / Three.js / Socket.IO / Chart.js は CDN から読み込みます
+
+```
+https://<server>/fujii/observation-room.html      # 観察室
+https://<server>/fujii/observation-analysis.html  # 分析ダッシュボード
+```
+
+### 3. Python パッケージをインストール
+
+```bash
+# speech_eval / face_eval
+pip install faster-whisper jiwer openai anthropic
+
+# analyze_speech.py（Whisper は OpenAI API の whisper-1 を使用）
+pip install librosa sounddevice soundfile numpy python-dotenv openai
+```
+
+### 4. API キーを設定
+
+LLM による分類には API キーが必要です。`.env`（git 管理外）か環境変数に設定してください。
+
+```
+OPENAI_API_KEY=...
+ANTHROPIC_API_KEY=...   # --provider anthropic の場合
+```
+
+### 5. 頷き・表情の精度を評価する（face_eval）
+
+```bash
+cd face_eval
+python server.py --port 8001          # http://localhost:8001/ で recorder.html を開いて録画
+# annotate.html で正解ラベルを付けてから評価
+python evaluate_nod.py data/ --tolerance 0.5
+python evaluate_expression.py data/
+```
+
+### 6. 音声の精度を評価する（speech_eval）
+
+```bash
+cd speech_eval
+python server.py --port 8000          # recorder.html で録音
+python transcribe.py data/*.webm --model large-v3
+python evaluate_asr.py data/          # 正解: data/<name>.reference.txt
+python evaluate_llm.py data/ --provider openai --model gpt-4o-mini
+```
+
+---
+
+## 📁 ファイル構成
 
 ```
 .
 ├── observation-room.html      # 観察室（講師 / 学習者 / 観察者の3ロール）
 ├── observation-analysis.html  # 分析ダッシュボード（時系列・指標の可視化）
+├── retro-rating.html          # 振り返り評定（録画を区間ごとに再生し、4観点を7段階で回答）
 ├── vr-classroom.html          # VR教室（視線トラッキング付き）
 ├── classroom5.html            # VR教室の旧バージョン
 ├── voice-chat.html            # P2P 音声チャット
@@ -62,63 +130,25 @@ WebXR 上に VR 教室と観察室を実装し、講師・学習者の頭部姿�
 └── build_dicomo_pptx.py       # スライド pptx 生成
 ```
 
-## 動かし方
+### 🔒 データの扱い
 
-### VR教室・観察室
+- 被験者の録画・録音・ログ（`Data/`, `face_eval/data/`, `speech_eval/data/`, `nod_debug_*.json`）は **git 管理しません**（`.gitignore` で除外）
+- フォーマット例として `speech_eval/data/labels.sample.csv` のみ含めています
 
-このフォルダは 研究室の WebXR Content Server の `public/fujii/` に配置して使います。観察室の同期にはサーバ側の Socket.IO プラグイン `observation-room.js`（パス `/webxr/observation-room-io/`）が必要です。
+---
 
-```
-https://<server>/fujii/observation-room.html      # 観察室
-https://<server>/fujii/observation-analysis.html  # 分析ダッシュボード
-```
-
-A-Frame / Three.js / Socket.IO / Chart.js は CDN から読み込みます。
-
-### 頷き・表情の精度評価（face_eval）
-
-```bash
-cd face_eval
-python server.py --port 8001          # http://localhost:8001/ で recorder.html を開いて録画
-# annotate.html で正解ラベルを付けてから評価
-python evaluate_nod.py data/ --tolerance 0.5
-python evaluate_expression.py data/
-```
-
-### 音声の精度評価（speech_eval）
-
-```bash
-cd speech_eval
-python server.py --port 8000          # recorder.html で録音
-python transcribe.py data/*.webm --model large-v3
-python evaluate_asr.py data/          # 正解: data/<name>.reference.txt
-python evaluate_llm.py data/ --provider openai --model gpt-4o-mini
-```
-
-LLM による分類には API キーが必要です。`.env`（git 管理外）か環境変数に設定してください。
-
-```
-OPENAI_API_KEY=...
-ANTHROPIC_API_KEY=...   # --provider anthropic の場合
-```
-
-### 必要な Python パッケージ
-
-```bash
-# speech_eval / face_eval
-pip install faster-whisper jiwer openai anthropic
-# analyze_speech.py（Whisper は OpenAI API の whisper-1 を使用）
-pip install librosa sounddevice soundfile numpy python-dotenv openai
-```
-
-## データの扱い
-
-被験者の録画・録音・ログ（`Data/`, `face_eval/data/`, `speech_eval/data/`, `nod_debug_*.json`）は **git 管理しません**（`.gitignore` で除外）。フォーマット例として `speech_eval/data/labels.sample.csv` のみ含めています。
-
-## 今後の予定
+## 🗺️ 今後の予定
 
 1. 音声パイプラインの精度評価（実データの投入）
 2. 被験者20名規模の本実験：事後リッカート尺度（主観）と客観指標の相関を検証
 3. 表情分類器の改善（MediaPipe ブレンドシェイプ、日本人顔データでの学習）
 4. 主観指標を教師信号とした統合納得度モデルの重み推定
 5. 観察室での納得度ヒートマップ表示と、講師へのリアルタイム通知
+
+---
+
+## 👤 Author
+
+- **藤井 優羽**（武蔵野大学 データサイエンス学部）
+  - GitHub: [@yuufujii0126](https://github.com/yuufujii0126)
+- **中村 亮太**（武蔵野大学 データサイエンス学部）
